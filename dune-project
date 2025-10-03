@@ -1,2 +1,19 @@
 (lang dune 3.20)
-(generate_opam_files false)
+(generate_opam_files true)
+
+(name miroir)
+(source (github stepbrobd/miroir))
+(license MIT)
+(authors "Yifei Sun <ysun@hey.com>")
+(maintainers "Yifei Sun <ysun@hey.com>")
+
+(package
+ (name miroir)
+ (synopsis "repo manager wannabe?")
+ (description "declaratively synchorize git repositories (including metadata) to multiple forges")
+ (depends
+   ocaml
+   cmdliner
+   otoml
+   ppx_deriving
+   ppx_deriving_cmdliner))

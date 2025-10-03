@@ -1,0 +1,6 @@
+(executable
+ (name main)
+ (public_name miroir)
+ (libraries cmdliner)
+ (preprocess
+  (pps ppx_deriving.show ppx_deriving_cmdliner)))

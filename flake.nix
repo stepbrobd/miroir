@@ -2,7 +2,7 @@
   outputs = inputs: inputs.parts.lib.mkFlake { inherit inputs; } {
     systems = import inputs.systems;
 
-    perSystem = { lib, pkgs, system, ... }: {
+    perSystem = { lib, pkgs, system, self', ... }: {
       _module.args = {
         lib = with inputs; builtins // nixpkgs.lib // parts.lib;
         pkgs = import inputs.nixpkgs {
@@ -10,6 +10,8 @@
           overlays = [
             (final: prev: {
               ocamlPackages = prev.ocamlPackages.overrideScope (_: prev: {
+                # -_-
+                dune = prev.dune_3;
                 # https://github.com/nixos/nixpkgs/pull/356634
                 mirage-crypto-rng = prev.mirage-crypto-rng.overrideAttrs {
                   doCheck = !(with final.stdenv; isDarwin && isAarch64);
@@ -30,16 +32,12 @@
       '';
 
       devShells.default = pkgs.mkShell {
+        inputsFrom = [ self'.packages.default ];
         packages = with pkgs.ocamlPackages; [
-          cmdliner
-          dune_3
+          dune
           findlib
           ocaml
           ocamlformat
-          otoml
-          ppx_deriving
-          ppx_deriving_cmdliner
-          ppxlib
           utop
         ];
       };
@@ -54,9 +52,19 @@
         src = with lib.fileset; toSource {
           root = ./.;
           fileset = unions [
+            ./bin
             ./dune-project
+            ./miroir.opam
           ];
         };
+
+        propagatedBuildInputs = with pkgs.ocamlPackages; [
+          cmdliner
+          otoml
+          ppx_deriving
+          ppx_deriving_cmdliner
+          ppxlib
+        ];
       });
     };
   };
