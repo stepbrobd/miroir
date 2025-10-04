@@ -63,6 +63,7 @@
 
         propagatedBuildInputs = with pkgs.ocamlPackages; [
           cmdliner
+          dune-build-info
           otoml
           ppx_deriving
           ppx_deriving_cmdliner

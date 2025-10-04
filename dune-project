@@ -2,6 +2,7 @@
 (generate_opam_files true)
 
 (name miroir)
+(version 2025.104.0)
 (source (github stepbrobd/miroir))
 (license MIT)
 (authors "Yifei Sun <ysun@hey.com>")
@@ -14,6 +15,7 @@
  (depends
    ocaml
    cmdliner
+   dune-build-info
    otoml
    ppx_deriving
    ppx_deriving_cmdliner
