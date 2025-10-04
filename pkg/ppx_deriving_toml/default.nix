@@ -24,7 +24,7 @@ buildDunePackage (finalAttrs: {
     runHook postPatch
   '';
 
-  propagatedBuildInputs = [
+  buildInputs = [
     containers
     otoml
     ppxlib

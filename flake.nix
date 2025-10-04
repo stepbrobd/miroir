@@ -64,7 +64,7 @@
 
         env.DUNE_CACHE = "disabled";
 
-        propagatedBuildInputs = with pkgs.ocamlPackages; [
+        buildInputs = with pkgs.ocamlPackages; [
           cmdliner
           dune-build-info
           otoml
@@ -75,6 +75,10 @@
         ];
 
         doCheck = true;
+        checkInputs = with pkgs.ocamlPackages; [
+          alcotest
+          containers
+        ];
       });
     };
   };
