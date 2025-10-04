@@ -3,39 +3,38 @@
     systems = import inputs.systems;
 
     perSystem = { lib, pkgs, system, self', ... }: {
-      _module.args = {
+      _module.args = lib.fix (self: {
         lib = with inputs; builtins // nixpkgs.lib // parts.lib;
         pkgs = import inputs.nixpkgs {
           inherit system;
           overlays = [
             (final: prev: {
-              ocamlPackages = prev.ocamlPackages.overrideScope (ocamlFinal: ocamlPrev: {
-                # -_-
-                dune = ocamlPrev.dune_3;
-                # https://github.com/nixos/nixpkgs/pull/356634
-                mirage-crypto-rng = ocamlPrev.mirage-crypto-rng.overrideAttrs {
-                  doCheck = !(with final.stdenv; isDarwin && isAarch64);
-                };
-                # https://github.com/nixos/nixpkgs/pull/433017
-                ppxlib = ocamlPrev.ppxlib.override {
-                  version = "0.33.0";
-                };
-                # https://github.com/andreypopp/ppx_deriving/tree/0.4/toml
-                ppx_deriving_toml = ocamlFinal.callPackage ./src/pkg/ppx_deriving_toml { };
-              });
+              ocamlPackages = prev.ocamlPackages.overrideScope (ocamlFinal: ocamlPrev:
+                (with self.lib; genAttrs
+                  (attrNames (readDir ./src/pkg))
+                  (name: ocamlFinal.callPackage ./src/pkg/${name} { }))
+                //
+                {
+                  # -_-
+                  dune = ocamlPrev.dune_3;
+                  # https://github.com/nixos/nixpkgs/pull/356634
+                  mirage-crypto-rng = ocamlPrev.mirage-crypto-rng.overrideAttrs {
+                    doCheck = !(with final.stdenv; isDarwin && isAarch64);
+                  };
+                  # https://github.com/nixos/nixpkgs/pull/433017
+                  ppxlib = ocamlPrev.ppxlib.override {
+                    version = "0.33.0";
+                  };
+                });
             })
           ];
         };
-      };
+      });
 
-      formatter = pkgs.writeShellScriptBin "formatter" ''
-        ${lib.getExe pkgs.ocamlPackages.dune} fmt
-        ${lib.getExe pkgs.nixpkgs-fmt} .
-        ${lib.getExe pkgs.taplo} format src/test/**/*.toml
-      '';
+      packages = { inherit (pkgs.ocamlPackages) miroir; };
 
       devShells.default = pkgs.mkShell {
-        inputsFrom = [ self'.packages.default ];
+        inputsFrom = lib.attrValues self'.packages;
         packages = with pkgs.ocamlPackages; [
           dune
           findlib
@@ -46,42 +45,11 @@
         ];
       };
 
-      packages.default = pkgs.ocamlPackages.buildDunePackage (finalAttrs: {
-        pname = "miroir";
-        meta.mainProgram = finalAttrs.pname;
-        version = with lib; pipe ./dune-project [
-          readFile
-          (match ".*\\(version ([^\n]+)\\).*")
-          head
-        ];
-
-        src = with lib.fileset; toSource {
-          root = ./.;
-          fileset = unions [
-            ./src
-            ./dune-project
-            ./miroir.opam
-          ];
-        };
-
-        env.DUNE_CACHE = "disabled";
-
-        buildInputs = with pkgs.ocamlPackages; [
-          cmdliner
-          dune-build-info
-          otoml
-          ppx_deriving
-          ppx_deriving_cmdliner
-          ppx_deriving_toml
-          ppxlib
-        ];
-
-        doCheck = true;
-        checkInputs = with pkgs.ocamlPackages; [
-          alcotest
-          containers
-        ];
-      });
+      formatter = pkgs.writeShellScriptBin "formatter" ''
+        ${lib.getExe pkgs.ocamlPackages.dune} fmt
+        ${lib.getExe pkgs.nixpkgs-fmt} .
+        ${lib.getExe pkgs.taplo} format src/test/**/*.toml
+      '';
     };
   };
 
