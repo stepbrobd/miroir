@@ -40,6 +40,7 @@
           dune
           findlib
           ocaml
+          ocaml-print-intf
           ocamlformat
           utop
         ];

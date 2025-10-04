@@ -120,10 +120,3 @@ let config_of_toml toml =
 ;;
 
 let config_of_string str = config_of_toml (Parser.from_string str)
-
-let show_config config_file =
-  In_channel.with_open_text config_file In_channel.input_all
-  |> config_of_string
-  |> show_config
-  |> print_endline
-;;
