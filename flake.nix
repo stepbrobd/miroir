@@ -9,17 +9,19 @@
           inherit system;
           overlays = [
             (final: prev: {
-              ocamlPackages = prev.ocamlPackages.overrideScope (_: prev: {
+              ocamlPackages = prev.ocamlPackages.overrideScope (ocamlFinal: ocamlPrev: {
                 # -_-
-                dune = prev.dune_3;
+                dune = ocamlPrev.dune_3;
                 # https://github.com/nixos/nixpkgs/pull/356634
-                mirage-crypto-rng = prev.mirage-crypto-rng.overrideAttrs {
+                mirage-crypto-rng = ocamlPrev.mirage-crypto-rng.overrideAttrs {
                   doCheck = !(with final.stdenv; isDarwin && isAarch64);
                 };
                 # https://github.com/nixos/nixpkgs/pull/433017
-                ppxlib = prev.ppxlib.override {
+                ppxlib = ocamlPrev.ppxlib.override {
                   version = "0.33.0";
                 };
+                # https://github.com/andreypopp/ppx_deriving/tree/0.4/toml
+                ppx_deriving_toml = ocamlFinal.callPackage ./pkg/ppx_deriving_toml { };
               });
             })
           ];
@@ -47,8 +49,6 @@
         meta.mainProgram = finalAttrs.pname;
         version = "0-unstable-git-${with inputs; self.shortRev or self.dirtyShortRev}";
 
-        env.DUNE_CACHE = "disabled";
-
         src = with lib.fileset; toSource {
           root = ./.;
           fileset = unions [
@@ -58,11 +58,14 @@
           ];
         };
 
+        env.DUNE_CACHE = "disabled";
+
         propagatedBuildInputs = with pkgs.ocamlPackages; [
           cmdliner
           otoml
           ppx_deriving
           ppx_deriving_cmdliner
+          ppx_deriving_toml
           ppxlib
         ];
       });
