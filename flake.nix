@@ -21,7 +21,7 @@
                   version = "0.33.0";
                 };
                 # https://github.com/andreypopp/ppx_deriving/tree/0.4/toml
-                ppx_deriving_toml = ocamlFinal.callPackage ./pkg/ppx_deriving_toml { };
+                ppx_deriving_toml = ocamlFinal.callPackage ./src/pkg/ppx_deriving_toml { };
               });
             })
           ];
@@ -31,7 +31,7 @@
       formatter = pkgs.writeShellScriptBin "formatter" ''
         ${lib.getExe pkgs.ocamlPackages.dune} fmt
         ${lib.getExe pkgs.nixpkgs-fmt} .
-        ${lib.getExe pkgs.taplo} format test/**/*.toml
+        ${lib.getExe pkgs.taplo} format src/test/**/*.toml
       '';
 
       devShells.default = pkgs.mkShell {
@@ -58,9 +58,7 @@
         src = with lib.fileset; toSource {
           root = ./.;
           fileset = unions [
-            ./bin
-            ./lib
-            ./test
+            ./src
             ./dune-project
             ./miroir.opam
           ];
@@ -75,6 +73,7 @@
           ppx_deriving
           ppx_deriving_cmdliner
           ppx_deriving_toml
+          ppxlib
         ];
 
         doCheck = true;

@@ -1,5 +1,0 @@
-(library
- (name miroir)
- (libraries dune-build-info otoml)
- (preprocess
-  (pps ppx_deriving.show ppx_deriving_toml)))

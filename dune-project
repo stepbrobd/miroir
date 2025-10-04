@@ -20,4 +20,5 @@
    ppx_deriving
    ppx_deriving_cmdliner
    ppx_deriving_toml
+   ppxlib
    (alcotest :with-test)))
