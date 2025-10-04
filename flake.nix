@@ -55,6 +55,7 @@
           fileset = unions [
             ./bin
             ./lib
+            ./test
             ./dune-project
             ./miroir.opam
           ];
@@ -71,6 +72,8 @@
           ppx_deriving_toml
           ppxlib
         ];
+
+        doCheck = true;
       });
     };
   };
