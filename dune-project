@@ -19,4 +19,5 @@
    otoml
    ppx_deriving
    ppx_deriving_cmdliner
-   ppx_deriving_toml))
+   ppx_deriving_toml
+   (alcotest :with-test)))

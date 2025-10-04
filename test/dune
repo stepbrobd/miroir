@@ -1,1 +1,7 @@
 (data_only_dirs data)
+
+(test
+ (name test_config)
+ (libraries alcotest miroir)
+ (deps
+  (source_tree data)))

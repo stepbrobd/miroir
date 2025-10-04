@@ -18,6 +18,7 @@ depends: [
   "ppx_deriving"
   "ppx_deriving_cmdliner"
   "ppx_deriving_toml"
+  "alcotest" {with-test}
   "odoc" {with-doc}
 ]
 build: [
