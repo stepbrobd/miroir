@@ -49,7 +49,11 @@
       packages.default = pkgs.ocamlPackages.buildDunePackage (finalAttrs: {
         pname = "miroir";
         meta.mainProgram = finalAttrs.pname;
-        version = "0-unstable-git-${with inputs; self.shortRev or self.dirtyShortRev}";
+        version = with lib; pipe ./dune-project [
+          readFile
+          (match ".*\\(version ([^\n]+)\\).*")
+          head
+        ];
 
         src = with lib.fileset; toSource {
           root = ./.;
@@ -71,7 +75,6 @@
           ppx_deriving
           ppx_deriving_cmdliner
           ppx_deriving_toml
-          ppxlib
         ];
 
         doCheck = true;
