@@ -1,0 +1,13 @@
+[general]
+home = "~/Workspace"
+
+[platform.github]
+origin = true
+domain = "github.com"
+user = "stepbrobd"
+access = "ssh"
+
+[repo."miroir"]
+description = "repo manager wannabe?"
+visibility = "public"
+archived = false

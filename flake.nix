@@ -29,8 +29,9 @@
       };
 
       formatter = pkgs.writeShellScriptBin "formatter" ''
-        ${pkgs.dune_3}/bin/dune fmt
-        ${pkgs.nixpkgs-fmt}/bin/nixpkgs-fmt .
+        ${lib.getExe pkgs.ocamlPackages.dune} fmt
+        ${lib.getExe pkgs.nixpkgs-fmt} .
+        ${lib.getExe pkgs.taplo} format test/**/*.toml
       '';
 
       devShells.default = pkgs.mkShell {

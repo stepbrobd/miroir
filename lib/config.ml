@@ -65,6 +65,7 @@ type repo =
   ; visibility : visibility [@toml.default Private] (* public or private *)
   ; archived : bool [@toml.default false]
     (* if true, repo will not be pulled/pushed, but metadata will still be managed *)
+    (* TODO: allow override *)
   }
 [@@deriving toml, show]
 

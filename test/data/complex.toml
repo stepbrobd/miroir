@@ -1,0 +1,33 @@
+[general]
+home = "~/Workspace"
+concurrency = 2
+
+[general.env]
+"GIT_SSH_COMMAND" = "ssh -o TcpKeepAlive=no -o ServerAliveInterval=10"
+
+[platform.github]
+origin = true
+domain = "github.com"
+user = "stepbrobd"
+access = "ssh"
+
+[platform.gitlab]
+origin = false
+domain = "gitlab.com"
+user = "stepbrobd"
+access = "https"
+
+[repo."nix"]
+description = "forked from nixos/nix"
+visibility = "public"
+archived = false
+
+[repo."nixpkgs"]
+description = "forked from nixos/nixpkgs"
+visibility = "public"
+archived = false
+
+[repo."nix-darwin"]
+description = "forked from lnl7/nix-darwin"
+visibility = "public"
+archived = false
