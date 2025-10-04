@@ -53,6 +53,7 @@
           root = ./.;
           fileset = unions [
             ./bin
+            ./lib
             ./dune-project
             ./miroir.opam
           ];
