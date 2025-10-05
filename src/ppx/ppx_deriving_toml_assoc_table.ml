@@ -60,6 +60,10 @@ let derive ~loc type_name fields =
           "[@toml.assoc_table] can only be applied to (string * 'a) list fields"
     in
     let field_names = List.map (fun ld -> ld.pld_name.txt) assoc_fields in
+    (* need this check or will get warning *)
+    (* (warning 23 [useless-record-with]): all the fields are explicitly listed in this record: the 'with' clause is useless.*)
+    (* (warning 26 [unused-var]): unused variable base. *)
+    let has_non_assoc_fields = List.length assoc_fields < List.length fields in
     (* build record update expression: e.g. { env = env; platform = platform; base } *)
     (* where base contains all non assoc list fields parsed by original function *)
     let record_update =
@@ -68,7 +72,8 @@ let derive ~loc type_name fields =
         (List.map
            (fun ld -> { loc; txt = Lident ld.pld_name.txt }, evar ~loc ld.pld_name.txt)
            assoc_fields)
-        (Some (evar ~loc "base"))
+        (* see has_non_assoc_fields def *)
+        (if has_non_assoc_fields then Some (evar ~loc "base") else None)
     in
     (* field parsing logic: let env = ... in let platform = ... in { ... } *)
     (* each assoc field is extracted from toml table and converted to assoc list *)
@@ -112,18 +117,26 @@ let derive ~loc type_name fields =
         (* weird shit *)
         match toml with
         | Otoml.TomlTable items ->
-          (* remove record fields in assoc list type from items so ppx_deriving_toml generated parser dont mess with them *)
-          let items_without_assoc =
-            List.fold_left
-              (fun acc field -> List.remove_assoc field acc)
-              items
-              [%e elist ~loc (List.map (estring ~loc) field_names)]
-          in
-          (* parse non assoc fields with ppx_deriving_toml generated function *)
-          (* calls <type>_of_toml before shadowing it *)
-          let base = [%e evar ~loc of_toml_name] (Otoml.TomlTable items_without_assoc) in
-          (* parse assoc_table fields and update record *)
-          [%e body]
+          [%e
+            (* see has_non_assoc_fields def *)
+            if has_non_assoc_fields
+            then
+              [%expr
+                (* remove record fields in assoc list type from items so ppx_deriving_toml generated parser dont mess with them *)
+                let items_without_assoc =
+                  List.fold_left
+                    (fun acc field -> List.remove_assoc field acc)
+                    items
+                    [%e elist ~loc (List.map (estring ~loc) field_names)]
+                in
+                (* parse non assoc fields with ppx_deriving_toml generated function *)
+                (* calls <type>_of_toml before shadowing it *)
+                let base =
+                  [%e evar ~loc of_toml_name] (Otoml.TomlTable items_without_assoc)
+                in
+                (* parse assoc_table fields and update record *)
+                [%e body]]
+            else body]
         | _ ->
           Ppx_deriving_toml_runtime.of_toml_error
             [%e estring ~loc ("expected " ^ type_name ^ " to be a table")]]
