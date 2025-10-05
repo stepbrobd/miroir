@@ -1,0 +1,7 @@
+(library
+ (name ppx_deriving_toml_assoc_table)
+ (kind ppx_deriver)
+ (libraries ppxlib)
+ (preprocess
+  (pps ppxlib.metaquot))
+ (ppx_runtime_libraries otoml ppx_deriving_toml))
