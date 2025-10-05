@@ -5,3 +5,9 @@
  (libraries alcotest miroir)
  (deps
   (source_tree data)))
+
+(test
+ (name test_ppx)
+ (libraries alcotest otoml ppx_deriving_toml)
+ (preprocess
+  (pps ppx_deriving_toml ppx_deriving_toml_assoc_table)))
