@@ -122,17 +122,18 @@ let derive ~loc type_name fields =
             if has_non_assoc_fields
             then
               [%expr
-                (* remove record fields in assoc list type from items so ppx_deriving_toml generated parser dont mess with them *)
-                let items_without_assoc =
+                (* replace assoc fields with empty arrays so original parser dont error *)
+                let items_with_empty_arrays =
                   List.fold_left
-                    (fun acc field -> List.remove_assoc field acc)
+                    (fun acc field ->
+                       (field, Otoml.TomlArray []) :: List.remove_assoc field acc)
                     items
                     [%e elist ~loc (List.map (estring ~loc) field_names)]
                 in
                 (* parse non assoc fields with ppx_deriving_toml generated function *)
                 (* calls <type>_of_toml before shadowing it *)
                 let base =
-                  [%e evar ~loc of_toml_name] (Otoml.TomlTable items_without_assoc)
+                  [%e evar ~loc of_toml_name] (Otoml.TomlTable items_with_empty_arrays)
                 in
                 (* parse assoc_table fields and update record *)
                 [%e body]]
