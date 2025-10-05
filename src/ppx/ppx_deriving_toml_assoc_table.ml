@@ -37,21 +37,21 @@ let derive ~loc type_name fields =
             | _ ->
               Location.raise_errorf
                 ~loc:field.pld_loc
-                "[@toml.assoc_table] requires (string * 'a) list, not (%a * 'a) list"
+                "[@toml.assoc_table] requires (string * 'a) list, got (%a * 'a) list"
                 Pprintast.core_type
                 key_type);
-           (* platform -> "platform_of_toml" *)
            (match value_type.ptyp_desc with
-            (* | Ptyp_constr ({ txt = Lident "string"; _ }, []) -> "string_of_toml" *)
             | Ptyp_constr ({ txt = Lident vt; _ }, []) -> vt ^ "_of_toml"
             | _ ->
               Location.raise_errorf
                 ~loc:field.pld_loc
-                "[@toml.assoc_table] doesn't support complex value types")
+                "[@toml.assoc_table] value type must be a named type, not %a"
+                Pprintast.core_type
+                value_type)
          | _ ->
            Location.raise_errorf
              ~loc:field.pld_loc
-             "[@toml.assoc_table] requires (string * 'a) list, not %a"
+             "[@toml.assoc_table] requires (string * 'a) list, got %a"
              Pprintast.core_type
              field.pld_type)
       | _ ->
