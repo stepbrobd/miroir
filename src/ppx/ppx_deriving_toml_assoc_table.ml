@@ -1,5 +1,5 @@
 open Ppxlib
-open Ast_builder.Default
+open Ppxlib.Ast_builder.Default
 
 (* e.g. type foo = { bar : (string * string) list [@toml.assoc_table] } *)
 let attr_name = "toml.assoc_table"
