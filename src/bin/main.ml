@@ -1,8 +1,8 @@
-open Cmdliner
 open Miroir
 
-type params = { config : string [@aka [ "c" ]] [@default ""] [@env "MIROIR_CONFIG"] }
-[@@deriving cmdliner]
+type params =
+  { config : string [@default ""] [@env "MIROIR_CONFIG"] [@names [ "c"; "config" ]] }
+[@@deriving subliner]
 
 let show_config config_file =
   In_channel.with_open_text config_file In_channel.input_all
@@ -11,12 +11,8 @@ let show_config config_file =
   |> print_endline
 ;;
 
-let main () =
-  let f p = show_config p.config in
-  let info = Cmd.info "miroir" ~version:(Version.get ()) ~doc:"repo manager wannabe?" in
-  let term = Term.(const f $ params_cmdliner_term ()) in
-  let cmd = Cmd.v info term in
-  Cmd.eval cmd
-;;
+let main { config } = show_config config
 
-let () = if !Sys.interactive then () else exit (main ())
+(** repo manager wannabe? *)
+[%%subliner.term eval.params <- main]
+  [@@name "miroir"] [@@version Version.get ()]

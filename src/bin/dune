@@ -3,4 +3,4 @@
  (public_name miroir)
  (libraries cmdliner miroir)
  (preprocess
-  (pps ppx_deriving.show ppx_deriving_cmdliner)))
+  (pps ppx_deriving.show ppx_subliner)))

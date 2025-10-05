@@ -18,7 +18,7 @@
    dune-build-info
    otoml
    ppx_deriving
-   ppx_deriving_cmdliner
    ppx_deriving_toml
+   ppx_subliner
    ppxlib
    (alcotest :with-test)))
