@@ -35,7 +35,7 @@ let access_of_toml = function
 type platform =
   { origin : bool (* whether this git forge is considered as the fetch target *)
   ; domain : string (* domain name for the git forge *)
-  ; user : string (* used to determine full repo url *)
+  ; user : string (* used to determine full repo uri *)
   ; access : access [@toml.default SSH] (* how to pull/push *)
   }
 [@@deriving show, toml]
