@@ -2,7 +2,7 @@
   outputs = inputs: inputs.parts.lib.mkFlake { inherit inputs; } {
     systems = import inputs.systems;
 
-    perSystem = { lib, pkgs, system, self', ... }: {
+    perSystem = { lib, pkgs, system, inputs', self', ... }: {
       _module.args = lib.fix (self: {
         lib = with inputs; builtins // nixpkgs.lib // parts.lib;
         pkgs = import inputs.nixpkgs {
@@ -20,6 +20,10 @@
                   # https://github.com/nixos/nixpkgs/pull/356634
                   mirage-crypto-rng = ocamlPrev.mirage-crypto-rng.overrideAttrs {
                     doCheck = !(with final.stdenv; isDarwin && isAarch64);
+                  };
+                  # https://github.com/oxcaml/oxcaml
+                  oxcaml = inputs'.oxcaml.packages.oxcaml.overrideAttrs {
+                    inherit (prev.ocamlPackages.ocaml) meta nativeCompilers;
                   };
                   # https://github.com/nixos/nixpkgs/pull/433017
                   ppxlib = ocamlPrev.ppxlib.override {
@@ -57,4 +61,7 @@
   inputs.parts.url = "github:hercules-ci/flake-parts";
   inputs.parts.inputs.nixpkgs-lib.follows = "nixpkgs";
   inputs.systems.url = "github:nix-systems/default";
+  inputs.oxcaml.url = "github:oxcaml/oxcaml";
+  inputs.oxcaml.inputs.nixpkgs.follows = "nixpkgs";
+  inputs.oxcaml.inputs.flake-utils.inputs.systems.follows = "systems";
 }
