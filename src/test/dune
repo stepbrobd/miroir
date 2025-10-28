@@ -1,10 +1,10 @@
-(data_only_dirs data)
+(data_only_dirs fixture)
 
 (test
  (name test_config)
  (libraries alcotest miroir)
  (deps
-  (source_tree data)))
+  (source_tree fixture)))
 
 (test
  (name test_ppx)

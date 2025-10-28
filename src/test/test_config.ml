@@ -2,7 +2,7 @@ open Alcotest
 open Miroir
 
 let from filename =
-  let path = Filename.concat "data" filename in
+  let path = Filename.concat "fixture" filename in
   In_channel.with_open_text path In_channel.input_all
 ;;
 
