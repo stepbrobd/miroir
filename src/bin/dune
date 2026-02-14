@@ -1,6 +1,6 @@
 (executable
  (name main)
  (public_name miroir)
- (libraries cmdliner eio_main forge miroir)
+ (libraries cmdliner eio_main forge git miroir)
  (preprocess
   (pps ppx_deriving.show ppx_subliner)))

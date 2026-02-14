@@ -35,7 +35,10 @@ write a miroir config:
   > [general]
   > home = "$PWD/repos"
   > branch = "master"
-  > concurrency = 1
+  > 
+  > [general.concurrency]
+  > repo = 1
+  > remote = 1
   > 
   > [platform.origin]
   > origin = true
@@ -55,9 +58,9 @@ write a miroir config:
   > archived = false
   > EOF
 
-test exec (filter $ lines and paths):
+test exec outputs directly to stdout:
 
-  $ miroir exec -c config.toml -n test -- cat readme.txt 2>&1 | grep -v '^\$' | grep -v 'Miroir'
+  $ miroir exec -c config.toml -n test -- cat readme.txt 2>&1 | grep -v ':: exec'
   hello
 
 push seed update, then test pull:
@@ -93,22 +96,22 @@ verify mirror has both commits:
 
 test exec runs in repo context:
 
-  $ miroir exec -c config.toml -n test -- git rev-parse --show-toplevel 2>&1 | grep -v '^\$' | grep -v 'Miroir' | grep -c 'repos/test'
+  $ miroir exec -c config.toml -n test -- git rev-parse --show-toplevel 2>&1 | grep -v ':: exec' | grep -c 'repos/test'
   1
 
 test exec header is printed:
 
-  $ miroir exec -c config.toml -n test -- true 2>&1 | grep -c 'Miroir :: Repo :: Exec'
+  $ miroir exec -c config.toml -n test -- true 2>&1 | grep -c 'test :: exec'
   1
 
 test pull header is printed:
 
-  $ miroir pull -c config.toml -n test 2>&1 | grep -c 'Miroir :: Repo :: Pull'
+  $ miroir pull -c config.toml -n test 2>&1 | grep -c 'test :: pull'
   1
 
 test push header is printed:
 
-  $ miroir push -c config.toml -n test 2>&1 | grep -c 'Miroir :: Repo :: Push'
+  $ miroir push -c config.toml -n test 2>&1 | grep -c 'test :: push'
   1
 
 test that we can make changes and push them through:

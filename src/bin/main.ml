@@ -17,7 +17,7 @@ type cmds =
 [@@deriving subliner]
 
 let get_targets { config; name; all; _ } =
-  match Git.available () with
+  match Git.Common.available () with
   | Error e ->
     Printf.eprintf "Error: %s\n" e;
     exit 1
@@ -40,92 +40,171 @@ let get_targets { config; name; all; _ } =
         exit 1)
 ;;
 
-(* run f on each target, bounded by concurrency semaphore *)
-let run_on ~fs ~mgr ~targets ~ctxs ~sem f =
-  Eio.Fiber.all
-    (List.map
-       (fun target () ->
-          Eio.Semaphore.acquire sem;
-          Fun.protect
-            ~finally:(fun () -> Eio.Semaphore.release sem)
-            (fun () ->
-               let ctx = List.assoc target ctxs in
-               let path = Eio.Path.(fs / target) in
-               match f ~mgr ~path ~ctx with
-               | Ok () -> ()
-               | Error e -> Printf.eprintf "error: %s\n%!" e))
-       targets)
+(* slot pool: manages display slot allocation for repo concurrency.
+   slots are indices [0..n-1] into the display's repo slot region.
+   acquire blocks when all slots are in use, release frees one. *)
+type pool =
+  { mu : Eio.Mutex.t
+  ; cond : Eio.Condition.t
+  ; free : int Queue.t
+  }
+
+let pool_make n =
+  let q = Queue.create () in
+  for i = 0 to n - 1 do
+    Queue.push i q
+  done;
+  { mu = Eio.Mutex.create (); cond = Eio.Condition.create (); free = q }
 ;;
 
-(* common setup for git commands: eio runtime + targets + concurrency *)
-let with_git args f =
+let pool_acquire p =
+  Eio.Mutex.lock p.mu;
+  while Queue.is_empty p.free do
+    Eio.Mutex.unlock p.mu;
+    Eio.Condition.await_no_mutex p.cond;
+    Eio.Mutex.lock p.mu
+  done;
+  let slot = Queue.pop p.free in
+  Eio.Mutex.unlock p.mu;
+  slot
+;;
+
+let pool_release p slot =
+  Eio.Mutex.lock p.mu;
+  Queue.push slot p.free;
+  Eio.Mutex.unlock p.mu;
+  Eio.Condition.broadcast p.cond
+;;
+
+(* run an op on each target, allocating display lines based on op's needs *)
+let run_on ~fs ~mgr ~targets ~ctxs ~cfg (module M : Git.Op) ~args =
+  let nplatforms = List.length cfg.Config.platform in
+  let nr = M.remotes nplatforms in
+  if nr = 0
+  then (
+    (* no display needed, run sequentially *)
+    let disp = Display.make ~repos:1 ~remotes:0 in
+    let sem = Eio.Semaphore.make 1 in
+    List.iter
+      (fun target ->
+         let ctx = List.assoc target ctxs in
+         let path = Eio.Path.(fs / target) in
+         match M.run ~mgr ~path ~ctx ~disp ~slot:0 ~sem ~args with
+         | Ok () -> ()
+         | Error e -> Printf.eprintf "error: %s\n%!" e)
+      targets)
+  else (
+    let nrepos = List.length targets in
+    let rc = min cfg.general.concurrency.repo nrepos in
+    let mc = min cfg.general.concurrency.remote nr in
+    let disp = Display.make ~repos:rc ~remotes:nr in
+    let pool = pool_make rc in
+    let remote_sem = Eio.Semaphore.make mc in
+    Eio.Fiber.all
+      (List.map
+         (fun target () ->
+            let slot = pool_acquire pool in
+            Display.clear disp slot;
+            Fun.protect
+              ~finally:(fun () -> pool_release pool slot)
+              (fun () ->
+                 let ctx = List.assoc target ctxs in
+                 let path = Eio.Path.(fs / target) in
+                 match M.run ~mgr ~path ~ctx ~disp ~slot ~sem:remote_sem ~args with
+                 | Ok () -> ()
+                 | Error e -> Display.repo disp slot (Printf.sprintf "error: %s" e)))
+         targets);
+    Display.finish disp)
+;;
+
+(* common setup: eio runtime + targets + dispatch *)
+let with_op args op =
   Eio_main.run (fun env ->
     let fs = Eio.Stdenv.fs env in
     let mgr = Eio.Stdenv.process_mgr env in
     let targets, ctxs, cfg = get_targets args in
-    let sem = Eio.Semaphore.make cfg.general.concurrency in
-    run_on ~fs ~mgr ~targets ~ctxs ~sem f)
+    run_on ~fs ~mgr ~targets ~ctxs ~cfg op ~args:args.args)
 ;;
 
-let sync_repo ~client ~cfg name =
+let sync_repo ~client ~cfg ~disp ~slot ~sem name =
   let repo =
     match List.assoc_opt name cfg.Config.repo with
     | Some r -> r
     | None ->
-      Printf.eprintf "warning: no repo config for %s\n%!" name;
+      Display.repo disp slot (Printf.sprintf "%s :: sync :: no repo config" name);
       { Config.description = None; visibility = Private; archived = false; branch = None }
   in
-  List.iter
-    (fun (pname, (p : Config.platform)) ->
-       match Config.resolve_forge p, Config.resolve_token pname p with
-       | None, _ ->
-         Printf.eprintf "warning: unknown forge for platform %s, skipping\n%!" pname
-       | _, None -> Printf.eprintf "warning: no token for platform %s, skipping\n%!" pname
-       | Some forge, Some token ->
-         let module F = (val Forge.dispatch forge : Forge.S) in
-         let meta =
-           { Forge.name
-           ; desc = repo.description
-           ; vis = repo.visibility
-           ; archived = repo.archived
-           }
-         in
-         (match F.sync client ~token ~user:p.user meta with
-          | Ok () ->
-            Printf.printf "%s/%s: synced on %s\n%!" pname name (Config.show_forge forge)
-          | Error e -> Printf.eprintf "%s/%s: %s\n%!" pname name e))
-    cfg.platform
+  Display.repo disp slot (Printf.sprintf "%s :: sync" name);
+  let platforms = cfg.platform in
+  Eio.Fiber.all
+    (List.mapi
+       (fun j (pname, (p : Config.platform)) () ->
+          Display.remote disp slot j (Printf.sprintf "%s :: waiting..." pname);
+          Eio.Semaphore.acquire sem;
+          Fun.protect
+            ~finally:(fun () -> Eio.Semaphore.release sem)
+            (fun () ->
+               match Config.resolve_forge p, Config.resolve_token pname p with
+               | None, _ ->
+                 Display.remote disp slot j (Printf.sprintf "%s :: skipped" pname);
+                 Display.output disp slot j "unknown forge"
+               | _, None ->
+                 Display.remote disp slot j (Printf.sprintf "%s :: skipped" pname);
+                 Display.output disp slot j "no token"
+               | Some forge, Some token ->
+                 Display.remote disp slot j (Printf.sprintf "%s :: syncing..." pname);
+                 let module F = (val Forge.dispatch forge : Forge.S) in
+                 let meta =
+                   { Forge.name
+                   ; desc = repo.description
+                   ; vis = repo.visibility
+                   ; archived = repo.archived
+                   }
+                 in
+                 (match F.sync client ~token ~user:p.user meta with
+                  | Ok () ->
+                    Display.remote disp slot j (Printf.sprintf "%s :: done" pname);
+                    Display.output
+                      disp
+                      slot
+                      j
+                      (Printf.sprintf "synced on %s" (Config.show_forge forge))
+                  | Error e ->
+                    Display.remote disp slot j (Printf.sprintf "%s :: error" pname);
+                    Display.output disp slot j e)))
+       platforms)
 ;;
 
 (** Repo manager wannabe? *)
 [%%subliner.cmds
   eval.cmds
   <- (function
-       | Init args ->
-         with_git args (fun ~mgr ~path ~ctx ->
-           Git.init ~mgr ~path ~ctx ~args:args.args ())
-       | Pull args ->
-         with_git args (fun ~mgr ~path ~ctx ->
-           Git.pull ~mgr ~path ~ctx ~args:args.args ())
-       | Push args ->
-         with_git args (fun ~mgr ~path ~ctx ->
-           Git.push ~mgr ~path ~ctx ~args:args.args ())
-       | Exec args ->
-         with_git args (fun ~mgr ~path ~ctx -> Git.exec ~mgr ~path ~ctx ~cmd:args.args)
+       | Init args -> with_op args (module Git.Init)
+       | Pull args -> with_op args (module Git.Pull)
+       | Push args -> with_op args (module Git.Push)
+       | Exec args -> with_op args (module Git.Exec)
        | Sync args ->
          Eio_main.run (fun env ->
            let net = Eio.Stdenv.net env in
            let targets, _ctxs, cfg = get_targets args in
+           let nrepos = List.length targets in
+           let nremotes = List.length cfg.platform in
+           let rc = min cfg.general.concurrency.repo nrepos in
+           let mc = min cfg.general.concurrency.remote nremotes in
            let client = Fetch.make_client net in
-           let sem = Eio.Semaphore.make cfg.general.concurrency in
+           let disp = Display.make ~repos:rc ~remotes:nremotes in
+           let pool = pool_make rc in
+           let remote_sem = Eio.Semaphore.make mc in
            Eio.Fiber.all
              (List.map
                 (fun target () ->
-                   Eio.Semaphore.acquire sem;
+                   let slot = pool_acquire pool in
+                   Display.clear disp slot;
                    Fun.protect
-                     ~finally:(fun () -> Eio.Semaphore.release sem)
+                     ~finally:(fun () -> pool_release pool slot)
                      (fun () ->
                         let name = Filename.basename target in
-                        sync_repo ~client ~cfg name))
-                targets)))]
+                        sync_repo ~client ~cfg ~disp ~slot ~sem:remote_sem name))
+                targets);
+           Display.finish disp))]
   [@@name "miroir"] [@@version Version.get ()]
