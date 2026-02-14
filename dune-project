@@ -1,5 +1,6 @@
 (lang dune 3.20)
 (generate_opam_files true)
+(executables_implicit_empty_intf true)
 
 (name miroir)
 (version 2025.104.0)
