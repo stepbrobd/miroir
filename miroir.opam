@@ -3,7 +3,7 @@ opam-version: "2.0"
 version: "2025.104.0"
 synopsis: "repo manager wannabe?"
 description:
-  "declaratively synchorize git repositories (including metadata) to multiple forges"
+  "declaratively synchronize git repositories (including metadata) to multiple forges"
 maintainer: ["Yifei Sun <ysun@hey.com>"]
 authors: ["Yifei Sun <ysun@hey.com>"]
 license: "MIT"
@@ -12,13 +12,18 @@ bug-reports: "https://github.com/stepbrobd/miroir/issues"
 depends: [
   "dune" {>= "3.20"}
   "ocaml"
+  "ca-certs"
   "cmdliner"
+  "cohttp-eio"
   "dune-build-info"
+  "eio_main"
   "otoml"
   "ppx_deriving"
   "ppx_deriving_toml"
   "ppx_subliner"
   "ppxlib"
+  "tls-eio"
+  "yojson"
   "alcotest" {with-test}
   "odoc" {with-doc}
 ]

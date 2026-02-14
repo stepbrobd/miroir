@@ -11,14 +11,19 @@
 (package
  (name miroir)
  (synopsis "repo manager wannabe?")
- (description "declaratively synchorize git repositories (including metadata) to multiple forges")
+ (description "declaratively synchronize git repositories (including metadata) to multiple forges")
  (depends
    ocaml
+   ca-certs
    cmdliner
+   cohttp-eio
    dune-build-info
+   eio_main
    otoml
    ppx_deriving
    ppx_deriving_toml
    ppx_subliner
    ppxlib
+   tls-eio
+   yojson
    (alcotest :with-test)))

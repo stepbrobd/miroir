@@ -1,5 +1,14 @@
 (library
  (name miroir)
- (libraries dune-build-info otoml unix)
+ (libraries
+  ca-certs
+  cohttp-eio
+  dune-build-info
+  eio
+  eio_main
+  otoml
+  tls-eio
+  unix
+  yojson)
  (preprocess
   (pps ppx_deriving.show ppx_deriving_toml ppx_deriving_toml_assoc_table)))
