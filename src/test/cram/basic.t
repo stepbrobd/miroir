@@ -1,8 +1,3 @@
-version flag:
-
-  $ miroir --version
-  2025.104.0
-
 set up a local bare repo as "origin":
 
   $ git init --bare --initial-branch=master origin.git > /dev/null 2>&1
