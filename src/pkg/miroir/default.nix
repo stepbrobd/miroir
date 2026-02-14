@@ -9,6 +9,7 @@
 , dune-build-info
 , eio
 , eio_main
+, gitMinimal
 , otoml
 , ppx_deriving
 , ppx_deriving_toml
@@ -62,6 +63,11 @@ buildDunePackage (finalAttrs: {
   ];
 
   doCheck = true;
+
+  nativeCheckInputs = [
+    gitMinimal
+  ];
+
   checkInputs = [
     alcotest
     containers

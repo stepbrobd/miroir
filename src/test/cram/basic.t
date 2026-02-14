@@ -119,6 +119,8 @@ test push header is printed:
 test that we can make changes and push them through:
 
   $ cd repos/test
+  $ git config user.email "test@test"
+  $ git config user.name "test"
   $ echo "changed" > readme.txt
   $ git add readme.txt
   $ git commit -m "local change" > /dev/null 2>&1
