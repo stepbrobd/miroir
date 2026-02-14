@@ -1,127 +1,132 @@
+let ( let* ) = Result.bind
+
 let available () =
   match Unix.system "command -v git > /dev/null 2>&1" with
   | Unix.WEXITED 0 -> Ok ()
   | _ -> Error "git is not available in PATH"
 ;;
 
-let run ?(silent = false) ~cwd ~env args =
-  let env_array = Array.of_list (List.map (fun (k, v) -> k ^ "=" ^ v) env) in
+let run ~mgr ~cwd ~env ?(silent = false) args =
+  let env = Array.of_list (List.map (fun (k, v) -> k ^ "=" ^ v) env) in
   let cmd = "git" :: args in
-  let stdout_fd, stderr_fd =
+  try
     if silent
     then (
-      let devnull = Unix.openfile "/dev/null" [ Unix.O_WRONLY ] 0o666 in
-      devnull, devnull)
-    else Unix.stdout, Unix.stderr
-  in
-  let pid =
-    Unix.create_process_env
-      "git"
-      (Array.of_list cmd)
-      env_array
-      Unix.stdin
-      stdout_fd
-      stderr_fd
-  in
-  if silent then Unix.close stdout_fd;
-  let old_cwd = Sys.getcwd () in
-  Sys.chdir cwd;
-  let result =
-    match Unix.waitpid [] pid with
-    | _, Unix.WEXITED 0 -> Ok ()
-    | _, Unix.WEXITED n -> Error (Printf.sprintf "git exited with code %d" n)
-    | _, Unix.WSIGNALED n -> Error (Printf.sprintf "git killed by signal %d" n)
-    | _, Unix.WSTOPPED n -> Error (Printf.sprintf "git stopped by signal %d" n)
-  in
-  Sys.chdir old_cwd;
-  result
+      let null = Eio.Path.(cwd / "/dev/null") in
+      Eio.Path.with_open_out ~create:(`If_missing 0o644) null (fun sink ->
+        Eio.Process.run mgr ~cwd ~env ~stdout:sink ~stderr:sink cmd);
+      Ok ())
+    else (
+      Eio.Process.run mgr ~cwd ~env cmd;
+      Ok ())
+  with
+  | Eio.Exn.Io _ as ex -> Error (Printexc.to_string ex)
 ;;
 
-let init ~path ~(ctx : Context.context) ?(args = []) () =
-  Printf.printf "Miroir :: Repo :: Init :: %s:\n%!" path;
-  let git_dir = Filename.concat path ".git" in
-  (if not (Sys.file_exists git_dir)
-   then (
-     Unix.mkdir path 0o755;
-     run ~cwd:path ~env:ctx.env ([ "init"; "--initial-branch=" ^ ctx.branch ] @ args))
-   else (
-     match run ~silent:true ~cwd:path ~env:ctx.env [ "remote" ] with
-     | Error e -> Error e
-     | Ok () -> Ok ()))
-  |> ignore;
-  List.iter
-    (fun (_name, uri) ->
-       run ~silent:true ~cwd:path ~env:ctx.env [ "remote"; "add"; "origin"; uri ]
-       |> ignore)
-    ctx.fetch_remotes;
-  List.iter
-    (fun (name, uri) ->
-       run ~silent:true ~cwd:path ~env:ctx.env [ "remote"; "add"; name; uri ] |> ignore)
-    ctx.push_remotes;
-  run ~cwd:path ~env:ctx.env ([ "fetch"; "--all" ] @ args) |> ignore;
-  run ~cwd:path ~env:ctx.env [ "submodule"; "update"; "--recursive"; "--init" ] |> ignore;
-  run ~cwd:path ~env:ctx.env [ "reset"; "--hard"; "origin/" ^ ctx.branch ] |> ignore;
-  run ~cwd:path ~env:ctx.env [ "checkout"; ctx.branch ] |> ignore;
+let init ~mgr ~path ~(ctx : Context.context) ?(args = []) () =
+  Printf.printf "Miroir :: Repo :: Init :: %s:\n%!" (snd path);
+  let dir = Eio.Path.(path / ".git") in
+  let* () =
+    match Eio.Path.kind ~follow:false dir with
+    | `Not_found ->
+      (try
+         Eio.Path.mkdir ~perm:0o755 path;
+         run
+           ~mgr
+           ~cwd:path
+           ~env:ctx.env
+           ~silent:false
+           ([ "init"; "--initial-branch=" ^ ctx.branch ] @ args)
+       with
+       | Eio.Exn.Io _ as ex -> Error (Printexc.to_string ex))
+    | _ -> run ~mgr ~cwd:path ~env:ctx.env ~silent:true [ "remote" ]
+  in
+  let* () =
+    List.fold_left
+      (fun acc (r : Context.remote) ->
+         let* () = acc in
+         run ~mgr ~cwd:path ~env:ctx.env ~silent:true [ "remote"; "add"; "origin"; r.uri ])
+      (Ok ())
+      ctx.fetch
+  in
+  let* () =
+    List.fold_left
+      (fun acc (r : Context.remote) ->
+         let* () = acc in
+         run ~mgr ~cwd:path ~env:ctx.env ~silent:true [ "remote"; "add"; r.name; r.uri ])
+      (Ok ())
+      ctx.push
+  in
+  let* () = run ~mgr ~cwd:path ~env:ctx.env ([ "fetch"; "--all" ] @ args) in
+  let* () =
+    run ~mgr ~cwd:path ~env:ctx.env [ "submodule"; "update"; "--recursive"; "--init" ]
+  in
+  let* () =
+    run ~mgr ~cwd:path ~env:ctx.env [ "reset"; "--hard"; "origin/" ^ ctx.branch ]
+  in
+  let* () = run ~mgr ~cwd:path ~env:ctx.env [ "checkout"; ctx.branch ] in
   run
+    ~mgr
     ~cwd:path
     ~env:ctx.env
     [ "branch"; "--set-upstream-to=origin/" ^ ctx.branch; ctx.branch ]
-  |> ignore
 ;;
 
-let pull ~path ~(ctx : Context.context) ?(args = []) () =
-  Printf.printf "Miroir :: Repo :: Pull :: %s:\n%!" path;
-  let git_dir = Filename.concat path ".git" in
-  if not (Sys.file_exists git_dir)
-  then Error (Printf.sprintf "fatal: %s is not a git repository" path)
-  else (
-    run ~cwd:path ~env:ctx.env ([ "pull"; "origin"; ctx.branch ] @ args) |> ignore;
-    run ~cwd:path ~env:ctx.env [ "submodule"; "update"; "--recursive"; "--remote" ]
-    |> ignore;
-    Ok ())
+let pull ~mgr ~path ~(ctx : Context.context) ?(args = []) () =
+  Printf.printf "Miroir :: Repo :: Pull :: %s:\n%!" (snd path);
+  let dir = Eio.Path.(path / ".git") in
+  match Eio.Path.kind ~follow:false dir with
+  | `Not_found -> Error (Printf.sprintf "fatal: %s is not a git repository" (snd path))
+  | _ ->
+    let* () = run ~mgr ~cwd:path ~env:ctx.env ([ "pull"; "origin"; ctx.branch ] @ args) in
+    run ~mgr ~cwd:path ~env:ctx.env [ "submodule"; "update"; "--recursive"; "--remote" ]
 ;;
 
-let push ~path ~(ctx : Context.context) ?(args = []) () =
-  Printf.printf "Miroir :: Repo :: Push :: %s:\n%!" path;
-  let git_dir = Filename.concat path ".git" in
-  if not (Sys.file_exists git_dir)
-  then Error (Printf.sprintf "fatal: %s is not a git repository" path)
-  else (
-    let all_remotes = ctx.push_remotes @ [ "origin", "" ] in
-    List.iter (fun (name, _) -> Printf.printf "  Pushing to %s...\n%!" name) all_remotes;
-    let results =
-      List.map
-        (fun (name, _) ->
-           let result =
-             run ~cwd:path ~env:ctx.env ([ "push"; name; ctx.branch ] @ args)
-           in
-           name, result)
-        all_remotes
-    in
+let push ~mgr ~path ~(ctx : Context.context) ?(args = []) () =
+  Printf.printf "Miroir :: Repo :: Push :: %s:\n%!" (snd path);
+  let dir = Eio.Path.(path / ".git") in
+  match Eio.Path.kind ~follow:false dir with
+  | `Not_found -> Error (Printf.sprintf "fatal: %s is not a git repository" (snd path))
+  | _ ->
     List.iter
-      (fun (name, result) ->
-         match result with
+      (fun (r : Context.remote) -> Printf.printf "  Pushing to %s...\n%!" r.name)
+      ctx.push;
+    (* push to all remotes in parallel *)
+    let results = ref [] in
+    let mu = Eio.Mutex.create () in
+    Eio.Fiber.all
+      (List.map
+         (fun (r : Context.remote) () ->
+            let res =
+              run ~mgr ~cwd:path ~env:ctx.env ([ "push"; r.name; ctx.branch ] @ args)
+            in
+            Eio.Mutex.lock mu;
+            results := (r.name, res) :: !results;
+            Eio.Mutex.unlock mu)
+         ctx.push);
+    let results = !results in
+    List.iter
+      (fun (name, res) ->
+         match res with
          | Ok () -> Printf.printf "%s: success\n%!" name
          | Error e -> Printf.eprintf "%s: %s\n%!" name e)
       results;
-    Ok ())
+    (* report first error if any *)
+    (match List.find_opt (fun (_, r) -> Result.is_error r) results with
+     | Some (name, Error e) -> Error (Printf.sprintf "push to %s failed: %s" name e)
+     | _ -> Ok ())
 ;;
 
-let exec ~path ~(ctx : Context.context) ~cmd =
-  Printf.printf "Miroir :: Repo :: Exec :: %s:\n%!" path;
+let exec ~mgr ~path ~(ctx : Context.context) ~cmd =
+  Printf.printf "Miroir :: Repo :: Exec :: %s:\n%!" (snd path);
   Printf.printf "$ %s\n%!" (String.concat " " cmd);
   match cmd with
-  | [] -> ()
-  | prog :: _args ->
-    let env_array = Array.of_list (List.map (fun (k, v) -> k ^ "=" ^ v) ctx.env) in
-    let pid =
-      Unix.create_process_env
-        prog
-        (Array.of_list cmd)
-        env_array
-        Unix.stdin
-        Unix.stdout
-        Unix.stderr
-    in
-    Unix.waitpid [] pid |> ignore
+  | [] -> Ok ()
+  | _prog :: _ ->
+    let env = Array.of_list (List.map (fun (k, v) -> k ^ "=" ^ v) ctx.env) in
+    (try
+       Eio.Process.run mgr ~cwd:path ~env cmd;
+       Ok ()
+     with
+     | Eio.Exn.Io _ as ex -> Error (Printexc.to_string ex))
 ;;
