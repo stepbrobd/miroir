@@ -6,14 +6,6 @@ repo metadata (visibility, description, etc.) with supported forges.
 
 ## Todo
 
-- Separate per-repo/per-remote concurrency control (now everything is wrapped
-  under one variable)
-
-- Change output format, `\r` flush each output line instead of printing in new
-  lines
-  - Delimit each repo by its name
-  - In a new line after repo name, flush op updates
-
 - CLI flags
   - `-a/--all` is not bool flag and should be global
   - `-c/--config` should be global
