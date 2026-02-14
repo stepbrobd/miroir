@@ -11,7 +11,8 @@ let test_config_default () =
   let cfg = Config.config_of_string toml in
   check string "default home" "~/" cfg.general.home;
   check string "default branch" "master" cfg.general.branch;
-  check int "default concurrency" 1 cfg.general.concurrency;
+  check int "default concurrency.repo" 1 cfg.general.concurrency.repo;
+  check int "default concurrency.remote" 1 cfg.general.concurrency.remote;
   check int "platform count" 0 (List.length cfg.platform);
   check int "repo count" 0 (List.length cfg.repo)
 ;;
@@ -20,7 +21,8 @@ let test_config_simple () =
   let cfg = Config.config_of_string (from "simple.toml") in
   check string "home" "~/Workspace" cfg.general.home;
   check string "branch" "master" cfg.general.branch;
-  check int "concurrency" 1 cfg.general.concurrency;
+  check int "concurrency.repo" 1 cfg.general.concurrency.repo;
+  check int "concurrency.remote" 1 cfg.general.concurrency.remote;
   check int "env length" 0 (List.length cfg.general.env);
   check int "platform count" 1 (List.length cfg.platform);
   let github = List.assoc "github" cfg.platform in
@@ -40,8 +42,9 @@ let test_config_simple () =
 let test_config_complex () =
   let cfg = Config.config_of_string (from "complex.toml") in
   check string "home" "~/Workspace" cfg.general.home;
-  check string "branch" "main" cfg.general.branch;
-  check int "concurrency" 2 cfg.general.concurrency;
+  check string "branch" "master" cfg.general.branch;
+  check int "concurrency.repo" 2 cfg.general.concurrency.repo;
+  check int "concurrency.remote" 3 cfg.general.concurrency.remote;
   check int "env length" 1 (List.length cfg.general.env);
   let git_ssh = List.assoc "GIT_SSH_COMMAND" cfg.general.env in
   check

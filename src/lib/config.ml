@@ -1,13 +1,20 @@
 open Otoml
 open Ppx_deriving_toml_runtime
 
+type concurrency =
+  { repo : int [@toml.default 1] (* max repos processed in parallel *)
+  ; remote : int [@toml.default 1] (* max remotes per repo in parallel *)
+  }
+[@@deriving show, toml]
+
+let default_concurrency = { repo = 1; remote = 1 }
+
 type general =
   { home : string
         [@toml.default "~/"]
         (* the root directory of where users want to put all their repos at *)
   ; branch : string [@toml.default "master"] (* default branch name *)
-  ; concurrency : int
-        [@toml.default 1] (* number of parallelism if the task can be run concurrently *)
+  ; concurrency : concurrency [@toml.default default_concurrency]
   ; env : (string * string) list [@toml.default []] [@toml.assoc_table]
     (* environment variables to be made available *)
   }

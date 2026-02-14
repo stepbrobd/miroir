@@ -1,10 +1,20 @@
 (** configuration types and TOML parsing *)
 
+(** concurrency limits *)
+type concurrency =
+  { repo : int
+  ; remote : int
+  }
+
+val show_concurrency : concurrency -> string
+val concurrency_to_toml : concurrency -> Otoml.t
+val concurrency_of_toml : Otoml.t -> concurrency
+
 (** global settings *)
 type general =
   { home : string
   ; branch : string
-  ; concurrency : int
+  ; concurrency : concurrency
   ; env : (string * string) list
   }
 
