@@ -53,8 +53,18 @@ let run_on ~fs ~mgr ~targets ~ctxs ~sem f =
                let path = Eio.Path.(fs / target) in
                match f ~mgr ~path ~ctx with
                | Ok () -> ()
-               | Error e -> Printf.eprintf "Error: %s\n%!" e))
+               | Error e -> Printf.eprintf "error: %s\n%!" e))
        targets)
+;;
+
+(* common setup for git commands: eio runtime + targets + concurrency *)
+let with_git args f =
+  Eio_main.run (fun env ->
+    let fs = Eio.Stdenv.fs env in
+    let mgr = Eio.Stdenv.process_mgr env in
+    let targets, ctxs, cfg = get_targets args in
+    let sem = Eio.Semaphore.make cfg.general.concurrency in
+    run_on ~fs ~mgr ~targets ~ctxs ~sem f)
 ;;
 
 let sync_repo ~client ~cfg name =
@@ -92,37 +102,16 @@ let sync_repo ~client ~cfg name =
   eval.cmds
   <- (function
        | Init args ->
-         Eio_main.run (fun env ->
-           let fs = Eio.Stdenv.fs env in
-           let mgr = Eio.Stdenv.process_mgr env in
-           let targets, ctxs, cfg = get_targets args in
-           let sem = Eio.Semaphore.make cfg.general.concurrency in
-           run_on ~fs ~mgr ~targets ~ctxs ~sem (fun ~mgr ~path ~ctx ->
-             Git.init ~mgr ~path ~ctx ~args:args.args ()))
+         with_git args (fun ~mgr ~path ~ctx ->
+           Git.init ~mgr ~path ~ctx ~args:args.args ())
        | Pull args ->
-         Eio_main.run (fun env ->
-           let fs = Eio.Stdenv.fs env in
-           let mgr = Eio.Stdenv.process_mgr env in
-           let targets, ctxs, cfg = get_targets args in
-           let sem = Eio.Semaphore.make cfg.general.concurrency in
-           run_on ~fs ~mgr ~targets ~ctxs ~sem (fun ~mgr ~path ~ctx ->
-             Git.pull ~mgr ~path ~ctx ~args:args.args ()))
+         with_git args (fun ~mgr ~path ~ctx ->
+           Git.pull ~mgr ~path ~ctx ~args:args.args ())
        | Push args ->
-         Eio_main.run (fun env ->
-           let fs = Eio.Stdenv.fs env in
-           let mgr = Eio.Stdenv.process_mgr env in
-           let targets, ctxs, cfg = get_targets args in
-           let sem = Eio.Semaphore.make cfg.general.concurrency in
-           run_on ~fs ~mgr ~targets ~ctxs ~sem (fun ~mgr ~path ~ctx ->
-             Git.push ~mgr ~path ~ctx ~args:args.args ()))
+         with_git args (fun ~mgr ~path ~ctx ->
+           Git.push ~mgr ~path ~ctx ~args:args.args ())
        | Exec args ->
-         Eio_main.run (fun env ->
-           let fs = Eio.Stdenv.fs env in
-           let mgr = Eio.Stdenv.process_mgr env in
-           let targets, ctxs, cfg = get_targets args in
-           let sem = Eio.Semaphore.make cfg.general.concurrency in
-           run_on ~fs ~mgr ~targets ~ctxs ~sem (fun ~mgr ~path ~ctx ->
-             Git.exec ~mgr ~path ~ctx ~cmd:args.args))
+         with_git args (fun ~mgr ~path ~ctx -> Git.exec ~mgr ~path ~ctx ~cmd:args.args)
        | Sync args ->
          Eio_main.run (fun env ->
            let net = Eio.Stdenv.net env in
