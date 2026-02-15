@@ -4,11 +4,17 @@ Miroir is a WIP declarative git repo manager for synchronizing multiple remotes
 (pull/push), executing concurrent commands in multiple repos (exec), and editing
 repo metadata (visibility, description, etc.) with supported forges.
 
-## Todo
+For concurrency, it's recommended not to set `general.concurrency.repo` to a
+very high value as it seems that forges like Codeberg will soft ban and time out
+large number of git operations over SSH.
 
-- CLI flags
-  - `-h/--help` missing shorthand (cmdliner limitation, needs argv rewriting)
-  - `-v/--version` missing shorthand (cmdliner limitation, needs argv rewriting)
+```toml
+[general.concurrency]
+repo = 2
+remote = 0
+```
+
+## Todo
 
 - Move to GraphQL and test
   - Codeberg: no support
