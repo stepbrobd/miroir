@@ -27,11 +27,15 @@ let run ~mgr ~path ~(ctx : Miroir.Context.context) ~disp ~slot ~sem:_ ~force:_ ~
     | _ -> run ~mgr ~cwd:path ~env:ctx.env ~silent:true [ "remote" ]
   in
   info "adding remotes...";
+  let set_remote ~name ~uri =
+    let _ = run ~mgr ~cwd:path ~env:ctx.env ~silent:true [ "remote"; "remove"; name ] in
+    run ~mgr ~cwd:path ~env:ctx.env ~silent:true [ "remote"; "add"; name; uri ]
+  in
   let* () =
     List.fold_left
       (fun acc (r : Miroir.Context.remote) ->
          let* () = acc in
-         run ~mgr ~cwd:path ~env:ctx.env ~silent:true [ "remote"; "add"; "origin"; r.uri ])
+         set_remote ~name:"origin" ~uri:r.uri)
       (Ok ())
       ctx.fetch
   in
@@ -39,7 +43,7 @@ let run ~mgr ~path ~(ctx : Miroir.Context.context) ~disp ~slot ~sem:_ ~force:_ ~
     List.fold_left
       (fun acc (r : Miroir.Context.remote) ->
          let* () = acc in
-         run ~mgr ~cwd:path ~env:ctx.env ~silent:true [ "remote"; "add"; r.name; r.uri ])
+         set_remote ~name:r.name ~uri:r.uri)
       (Ok ())
       ctx.push
   in
