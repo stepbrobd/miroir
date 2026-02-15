@@ -69,12 +69,15 @@ let goto t line =
   t.cursor := line
 ;;
 
+let write_line_unlocked t line s =
+  t.lines.(line) <- s;
+  goto t line;
+  Printf.printf "\027[K%s%!" s
+;;
+
 (* write a line in tty mode: move to target line and overwrite *)
 let tty_write t line s =
-  Eio.Mutex.use_rw ~protect:true t.mu (fun () ->
-    t.lines.(line) <- s;
-    goto t line;
-    Printf.printf "\027[K%s%!" s)
+  Eio.Mutex.use_rw ~protect:true t.mu (fun () -> write_line_unlocked t line s)
 ;;
 
 (* write a line in non-tty mode: print sequentially with prefix *)
@@ -112,9 +115,10 @@ let clear t r =
   let base = r * t.stride in
   if t.tty
   then
-    for i = 0 to t.stride - 1 do
-      tty_write t (base + i) ""
-    done
+    Eio.Mutex.use_rw ~protect:true t.mu (fun () ->
+      for i = 0 to t.stride - 1 do
+        write_line_unlocked t (base + i) ""
+      done)
   else
     Eio.Mutex.use_rw ~protect:true t.mu (fun () ->
       for i = 0 to t.stride - 1 do
