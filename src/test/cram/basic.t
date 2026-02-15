@@ -135,3 +135,41 @@ test that we can make changes and push them through:
   local change
   update
   init
+
+test fetch header is printed:
+
+  $ miroir fetch -c config.toml -n test 2>&1 | grep -c 'test :: fetch'
+  1
+
+test fetch brings updates:
+
+  $ cd seed
+  $ git pull origin master > /dev/null 2>&1
+  $ echo "fetched" > readme.txt
+  $ git add readme.txt
+  $ git commit -m "fetch update" > /dev/null 2>&1
+  $ git push origin master > /dev/null 2>&1
+  $ cd ..
+
+  $ miroir fetch -c config.toml -n test > /dev/null 2>&1
+
+verify fetch got the commit (check remote tracking ref):
+
+  $ git -C repos/test log --format=%s origin/master | head -1
+  fetch update
+
+test pull aborts on dirty working tree without --force:
+
+  $ echo "dirty" > repos/test/readme.txt
+
+  $ miroir pull -c config.toml -n test 2>&1 | grep -c 'dirty working tree'
+  3
+
+test pull succeeds with --force on dirty working tree:
+
+  $ echo "dirty again" > repos/test/readme.txt
+
+  $ miroir pull -c config.toml -n test -f > /dev/null 2>&1
+
+  $ cat repos/test/readme.txt
+  fetched

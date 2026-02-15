@@ -7,14 +7,8 @@ repo metadata (visibility, description, etc.) with supported forges.
 ## Todo
 
 - CLI flags
-  - `-a/--all` is not bool flag and should be global
-  - `-c/--config` should be global
-  - `-f/--force` missing (force push only? or change how current pull works to
-    fetch remotes only, and only replace user working copy when this flag is
-    passed?)
-  - `-h/--help` missing shorthand
-  - `-n/--name` should be global
-  - `-v/--version` missing shorthand
+  - `-h/--help` missing shorthand (cmdliner limitation, needs argv rewriting)
+  - `-v/--version` missing shorthand (cmdliner limitation, needs argv rewriting)
 
 - Move to GraphQL and test
   - Codeberg: no support
