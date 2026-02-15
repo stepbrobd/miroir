@@ -7,7 +7,7 @@
 module type Op = sig
   (* number of remote display lines needed per repo slot.
      0 = no display (exec), 1 = origin only (pull/init),
-     n = all remotes (push). the caller passes in the total
+     n = all remotes (fetch/push). the caller passes in the total
      platform count; operations that need fewer just return
      what they need. *)
   val remotes : int -> int
@@ -19,6 +19,7 @@ module type Op = sig
     -> disp:Miroir.Display.t
     -> slot:int
     -> sem:Eio.Semaphore.t
+    -> force:bool
     -> args:string list
     -> (unit, string) result
 end

@@ -2,7 +2,7 @@ open Common
 
 let remotes _ = 1
 
-let run ~mgr ~path ~(ctx : Miroir.Context.context) ~disp ~slot ~sem:_ ~args =
+let run ~mgr ~path ~(ctx : Miroir.Context.context) ~disp ~slot ~sem:_ ~force:_ ~args =
   let name = repo_name path in
   Miroir.Display.repo disp slot (Printf.sprintf "%s :: init" name);
   (* use origin remote slot (index 0) for init progress *)

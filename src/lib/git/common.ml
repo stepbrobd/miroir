@@ -66,3 +66,13 @@ let ensure_repo path =
   | `Not_found -> Error (Printf.sprintf "fatal: %s is not a git repository" (snd path))
   | _ -> Ok ()
 ;;
+
+(* check if the working tree has uncommitted changes *)
+let is_dirty ~mgr ~cwd ~env =
+  let dirty = ref false in
+  match
+    run ~mgr ~cwd ~env ~on_output:(fun _ -> dirty := true) [ "status"; "--porcelain" ]
+  with
+  | Ok () -> !dirty
+  | Error _ -> false
+;;

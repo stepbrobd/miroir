@@ -2,11 +2,12 @@ open Common
 
 let remotes n = n
 
-let run ~mgr ~path ~(ctx : Miroir.Context.context) ~disp ~slot ~sem ~args =
+let run ~mgr ~path ~(ctx : Miroir.Context.context) ~disp ~slot ~sem ~force ~args =
   let name = repo_name path in
   Miroir.Display.repo disp slot (Printf.sprintf "%s :: push" name);
   let* () = ensure_repo path in
   (* push to all remotes, each with its own display slot *)
+  let force_args = if force then [ "--force" ] else [] in
   let results = ref [] in
   let mu = Eio.Mutex.create () in
   Eio.Fiber.all
@@ -29,7 +30,7 @@ let run ~mgr ~path ~(ctx : Miroir.Context.context) ~disp ~slot ~sem ~args =
                    ~cwd:path
                    ~env:ctx.env
                    ~on_output:(Miroir.Display.output disp slot j)
-                   ([ "push"; r.name; ctx.branch ] @ args)
+                   ([ "push" ] @ force_args @ [ r.name; ctx.branch ] @ args)
                in
                (match res with
                 | Ok () ->

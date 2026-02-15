@@ -4,7 +4,16 @@
 
 let remotes _ = 0
 
-let run ~mgr ~path ~(ctx : Miroir.Context.context) ~disp:_ ~slot:_ ~sem:_ ~args:cmd =
+let run
+      ~mgr
+      ~path
+      ~(ctx : Miroir.Context.context)
+      ~disp:_
+      ~slot:_
+      ~sem:_
+      ~force:_
+      ~args:cmd
+  =
   let name = Common.repo_name path in
   Printf.printf "%s :: exec :: %s\n%!" name (String.concat " " cmd);
   match cmd with
