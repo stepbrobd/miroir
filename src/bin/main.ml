@@ -21,21 +21,36 @@ type cmds =
 let get_targets { config; name; all; _ } =
   match Git.Common.available () with
   | Error e ->
-    Printf.eprintf "Error: %s\n" e;
+    Printf.eprintf "error: %s\n" e;
     exit 1
   | Ok () ->
     let cfg =
-      In_channel.with_open_text config In_channel.input_all |> Config.config_of_string
+      if config = ""
+      then (
+        Printf.eprintf
+          "fatal: no config file specified (use -c/--config or set MIROIR_CONFIG)\n";
+        exit 1)
+      else
+        In_channel.with_open_text config In_channel.input_all |> Config.config_of_string
     in
     let ctxs = Context.make_all cfg in
     let home = Context.expand_home cfg.general.home in
     if name <> ""
-    then [ Filename.concat home name ], ctxs, cfg
+    then (
+      let path = Filename.concat home name in
+      if not (List.mem_assoc path ctxs)
+      then (
+        Printf.eprintf "fatal: repo '%s' not found in config\n" name;
+        exit 1);
+      [ path ], ctxs, cfg)
     else if all
     then List.map fst ctxs, ctxs, cfg
     else (
       let cwd = Sys.getcwd () in
-      match List.find_opt (fun (path, _) -> String.starts_with ~prefix:path cwd) ctxs with
+      let is_within ~repo cwd =
+        String.equal repo cwd || String.starts_with ~prefix:(repo ^ Filename.dir_sep) cwd
+      in
+      match List.find_opt (fun (path, _) -> is_within ~repo:path cwd) ctxs with
       | Some (path, _) -> [ path ], ctxs, cfg
       | None ->
         Printf.eprintf "fatal: not a managed repository (cwd: %s)\n" cwd;
