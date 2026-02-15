@@ -12,7 +12,7 @@ let test_config_default () =
   check string "default home" "~/" cfg.general.home;
   check string "default branch" "master" cfg.general.branch;
   check int "default concurrency.repo" 1 cfg.general.concurrency.repo;
-  check int "default concurrency.remote" 1 cfg.general.concurrency.remote;
+  check int "default concurrency.remote" 0 cfg.general.concurrency.remote;
   check int "platform count" 0 (List.length cfg.platform);
   check int "repo count" 0 (List.length cfg.repo)
 ;;
@@ -22,7 +22,7 @@ let test_config_simple () =
   check string "home" "~/Workspace" cfg.general.home;
   check string "branch" "master" cfg.general.branch;
   check int "concurrency.repo" 1 cfg.general.concurrency.repo;
-  check int "concurrency.remote" 1 cfg.general.concurrency.remote;
+  check int "concurrency.remote" 0 cfg.general.concurrency.remote;
   check int "env length" 0 (List.length cfg.general.env);
   check int "platform count" 1 (List.length cfg.platform);
   let github = List.assoc "github" cfg.platform in

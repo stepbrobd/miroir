@@ -3,11 +3,11 @@ open Ppx_deriving_toml_runtime
 
 type concurrency =
   { repo : int [@toml.default 1] (* max repos processed in parallel *)
-  ; remote : int [@toml.default 1] (* max remotes per repo in parallel *)
+  ; remote : int [@toml.default 0] (* max remotes per repo in parallel, 0 = all *)
   }
 [@@deriving show, toml]
 
-let default_concurrency = { repo = 1; remote = 1 }
+let default_concurrency = { repo = 1; remote = 0 }
 
 type general =
   { home : string
