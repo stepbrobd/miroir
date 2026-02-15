@@ -1,9 +1,9 @@
 (lang dune 3.20)
-(generate_opam_files true)
+(generate_opam_files false)
 (executables_implicit_empty_intf true)
 
 (name miroir)
-(version 2025.104.0)
+(version 2026.215.0)
 (source (github stepbrobd/miroir))
 (license MIT)
 (authors "Yifei Sun <ysun@hey.com>")
