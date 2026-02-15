@@ -3,7 +3,7 @@
 (executables_implicit_empty_intf true)
 
 (name miroir)
-(version 2026.215.2)
+(version 2026.215.3)
 (source (github stepbrobd/miroir))
 (license MIT)
 (authors "Yifei Sun <ysun@hey.com>")
