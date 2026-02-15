@@ -43,8 +43,12 @@ let get_targets { config; name; all; _ } =
 ;;
 
 (* slot pool: manages display slot allocation for repo concurrency.
-   slots are indices [0..n-1] into the display's repo slot region.
-   acquire blocks when all slots are in use, release frees one. *)
+   slots are indices [0..n-1] into the display's repo slot region
+   acquire blocks via condition variable when all slots are in use,
+   release frees one and wakes waiters. uses Eio.Condition.await
+   (not await_no_mutex) to atomically register + unlock, avoiding
+   missed wakeups between unlock and wait
+   https://ocaml-multicore.github.io/eio/eio/Eio/Condition/index.html *)
 type pool =
   { mu : Eio.Mutex.t
   ; cond : Eio.Condition.t
@@ -60,21 +64,15 @@ let pool_make n =
 ;;
 
 let pool_acquire p =
-  Eio.Mutex.lock p.mu;
-  while Queue.is_empty p.free do
-    Eio.Mutex.unlock p.mu;
-    Eio.Condition.await_no_mutex p.cond;
-    Eio.Mutex.lock p.mu
-  done;
-  let slot = Queue.pop p.free in
-  Eio.Mutex.unlock p.mu;
-  slot
+  Eio.Mutex.use_rw ~protect:false p.mu (fun () ->
+    while Queue.is_empty p.free do
+      Eio.Condition.await p.cond p.mu
+    done;
+    Queue.pop p.free)
 ;;
 
 let pool_release p slot =
-  Eio.Mutex.lock p.mu;
-  Queue.push slot p.free;
-  Eio.Mutex.unlock p.mu;
+  Eio.Mutex.use_rw ~protect:false p.mu (fun () -> Queue.push slot p.free);
   Eio.Condition.broadcast p.cond
 ;;
 
@@ -115,10 +113,10 @@ let run_on ~fs ~mgr ~targets ~ctxs ~cfg (module M : Git.Op) ~force ~args =
       (List.map
          (fun target () ->
             let slot = pool_acquire pool in
-            Display.clear disp slot;
             Fun.protect
               ~finally:(fun () -> pool_release pool slot)
               (fun () ->
+                 Display.clear disp slot;
                  let ctx = List.assoc target ctxs in
                  let path = Eio.Path.(fs / target) in
                  match M.run ~mgr ~path ~ctx ~disp ~slot ~sem:remote_sem ~force ~args with
@@ -230,10 +228,10 @@ let sync_repo ~client ~cfg ~disp ~slot ~sem name =
              (List.map
                 (fun target () ->
                    let slot = pool_acquire pool in
-                   Display.clear disp slot;
                    Fun.protect
                      ~finally:(fun () -> pool_release pool slot)
                      (fun () ->
+                        Display.clear disp slot;
                         let name = Filename.basename target in
                         match sync_repo ~client ~cfg ~disp ~slot ~sem:remote_sem name with
                         | Ok () -> ()
