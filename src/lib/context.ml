@@ -38,6 +38,12 @@ let make ~env ~platforms ~repo ~branch =
          else None)
       platforms
   in
+  (match fetch with
+   | [] -> Printf.eprintf "warning: no platform has origin = true for %s\n" repo
+   | [ _ ] -> ()
+   | _ ->
+     Printf.eprintf "fatal: multiple platforms have origin = true\n";
+     exit 1);
   let push =
     List.map
       (fun (name, (p : Config.platform)) ->
@@ -48,10 +54,17 @@ let make ~env ~platforms ~repo ~branch =
 ;;
 
 let expand_home path =
-  if String.starts_with ~prefix:"~/" path
-  then (
-    let home = Sys.getenv "HOME" in
-    home ^ String.sub path 1 (String.length path - 1))
+  let get_home () =
+    match Sys.getenv_opt "HOME" with
+    | Some h -> h
+    | None ->
+      Printf.eprintf "fatal: $HOME is not set\n";
+      exit 1
+  in
+  if String.equal path "~"
+  then get_home ()
+  else if String.starts_with ~prefix:"~/" path
+  then get_home () ^ String.sub path 1 (String.length path - 1)
   else path
 ;;
 
