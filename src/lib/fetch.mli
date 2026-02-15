@@ -1,7 +1,7 @@
 (** HTTP client for forge API requests *)
 
 (** opaque HTTP client handle *)
-type client = Cohttp_eio.Client.t
+type client
 
 (** create a TLS-enabled HTTP client using system CA certificates *)
 val make_client : _ Eio.Net.t -> client

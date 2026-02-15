@@ -22,7 +22,10 @@ let make_client net =
   Cohttp_eio.Client.make ~https net
 ;;
 
-let body_to_string body = Eio.Buf_read.(of_flow ~max_size:(1024 * 1024) body |> take_all)
+let body_to_string body =
+  try Eio.Buf_read.(of_flow ~max_size:(10 * 1024 * 1024) body |> take_all) with
+  | Eio.Buf_read.Buffer_limit_exceeded -> failwith "response body exceeded 10MB limit"
+;;
 
 type meth =
   | GET
