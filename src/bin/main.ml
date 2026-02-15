@@ -3,13 +3,15 @@ open Miroir
 type args =
   { config : string [@default ""] [@names [ "c"; "config" ]] [@env "MIROIR_CONFIG"]
   ; name : string [@default ""] [@names [ "n"; "name" ]]
-  ; all : bool [@default false] [@names [ "a"; "all" ]]
+  ; all : bool [@names [ "a"; "all" ]]
+  ; force : bool [@names [ "f"; "force" ]]
   ; args : string list [@pos_all]
   }
 [@@deriving subliner]
 
 type cmds =
   | Init of args (** Initialize repo(s) (destructive, uncommitted changes will be lost) *)
+  | Fetch of args (** Fetch from all remotes *)
   | Pull of args (** Pull from origin *)
   | Push of args (** Push to all remotes *)
   | Exec of args (** Execute command in repo(s) *)
@@ -77,9 +79,14 @@ let pool_release p slot =
 ;;
 
 (* run an op on each target, allocating display lines based on op's needs *)
-let run_on ~fs ~mgr ~targets ~ctxs ~cfg (module M : Git.Op) ~args =
+let run_on ~fs ~mgr ~targets ~ctxs ~cfg (module M : Git.Op) ~force ~args =
   let nplatforms = List.length cfg.Config.platform in
   let nr = M.remotes nplatforms in
+  let errors = ref [] in
+  let err_mu = Eio.Mutex.create () in
+  let add_err repo msg =
+    Eio.Mutex.use_rw ~protect:true err_mu (fun () -> errors := (repo, msg) :: !errors)
+  in
   if nr = 0
   then (
     (* no display needed, run sequentially *)
@@ -89,9 +96,12 @@ let run_on ~fs ~mgr ~targets ~ctxs ~cfg (module M : Git.Op) ~args =
       (fun target ->
          let ctx = List.assoc target ctxs in
          let path = Eio.Path.(fs / target) in
-         match M.run ~mgr ~path ~ctx ~disp ~slot:0 ~sem ~args with
+         match M.run ~mgr ~path ~ctx ~disp ~slot:0 ~sem ~force ~args with
          | Ok () -> ()
-         | Error e -> Printf.eprintf "error: %s\n%!" e)
+         | Error e ->
+           let name = Filename.basename target in
+           add_err name e;
+           Printf.eprintf "error: %s :: %s\n%!" name e)
       targets)
   else (
     let nrepos = List.length targets in
@@ -110,11 +120,20 @@ let run_on ~fs ~mgr ~targets ~ctxs ~cfg (module M : Git.Op) ~args =
               (fun () ->
                  let ctx = List.assoc target ctxs in
                  let path = Eio.Path.(fs / target) in
-                 match M.run ~mgr ~path ~ctx ~disp ~slot ~sem:remote_sem ~args with
+                 match M.run ~mgr ~path ~ctx ~disp ~slot ~sem:remote_sem ~force ~args with
                  | Ok () -> ()
-                 | Error e -> Display.repo disp slot (Printf.sprintf "error: %s" e)))
+                 | Error e ->
+                   let name = Filename.basename target in
+                   add_err name e;
+                   Display.repo disp slot (Printf.sprintf "error: %s" e)))
          targets);
-    Display.finish disp)
+    Display.finish disp);
+  (* print error summary *)
+  let errs = List.rev !errors in
+  if errs <> []
+  then (
+    Printf.eprintf "\n";
+    List.iter (fun (repo, msg) -> Printf.eprintf "error: %s :: %s\n" repo msg) errs)
 ;;
 
 (* common setup: eio runtime + targets + dispatch *)
@@ -123,7 +142,7 @@ let with_op args op =
     let fs = Eio.Stdenv.fs env in
     let mgr = Eio.Stdenv.process_mgr env in
     let targets, ctxs, cfg = get_targets args in
-    run_on ~fs ~mgr ~targets ~ctxs ~cfg op ~args:args.args)
+    run_on ~fs ~mgr ~targets ~ctxs ~cfg op ~force:args.force ~args:args.args)
 ;;
 
 let sync_repo ~client ~cfg ~disp ~slot ~sem name =
@@ -136,6 +155,8 @@ let sync_repo ~client ~cfg ~disp ~slot ~sem name =
   in
   Display.repo disp slot (Printf.sprintf "%s :: sync" name);
   let platforms = cfg.platform in
+  let errors = ref [] in
+  let mu = Eio.Mutex.create () in
   Eio.Fiber.all
     (List.mapi
        (fun j (pname, (p : Config.platform)) () ->
@@ -171,8 +192,13 @@ let sync_repo ~client ~cfg ~disp ~slot ~sem name =
                       (Printf.sprintf "synced on %s" (Config.show_forge forge))
                   | Error e ->
                     Display.remote disp slot j (Printf.sprintf "%s :: error" pname);
-                    Display.output disp slot j e)))
-       platforms)
+                    Display.output disp slot j e;
+                    Eio.Mutex.use_rw ~protect:true mu (fun () ->
+                      errors := Printf.sprintf "%s/%s" pname e :: !errors))))
+       platforms);
+  match !errors with
+  | [] -> Ok ()
+  | errs -> Error (String.concat "; " (List.rev errs))
 ;;
 
 (** Repo manager wannabe? *)
@@ -180,6 +206,7 @@ let sync_repo ~client ~cfg ~disp ~slot ~sem name =
   eval.cmds
   <- (function
        | Init args -> with_op args (module Git.Init)
+       | Fetch args -> with_op args (module Git.Fetch)
        | Pull args -> with_op args (module Git.Pull)
        | Push args -> with_op args (module Git.Push)
        | Exec args -> with_op args (module Git.Exec)
@@ -195,6 +222,8 @@ let sync_repo ~client ~cfg ~disp ~slot ~sem name =
            let disp = Display.make ~repos:rc ~remotes:nremotes in
            let pool = pool_make rc in
            let remote_sem = Eio.Semaphore.make mc in
+           let errors = ref [] in
+           let err_mu = Eio.Mutex.create () in
            Eio.Fiber.all
              (List.map
                 (fun target () ->
@@ -204,7 +233,18 @@ let sync_repo ~client ~cfg ~disp ~slot ~sem name =
                      ~finally:(fun () -> pool_release pool slot)
                      (fun () ->
                         let name = Filename.basename target in
-                        sync_repo ~client ~cfg ~disp ~slot ~sem:remote_sem name))
+                        match sync_repo ~client ~cfg ~disp ~slot ~sem:remote_sem name with
+                        | Ok () -> ()
+                        | Error e ->
+                          Eio.Mutex.use_rw ~protect:true err_mu (fun () ->
+                            errors := (name, e) :: !errors)))
                 targets);
-           Display.finish disp))]
+           Display.finish disp;
+           let errs = List.rev !errors in
+           if errs <> []
+           then (
+             Printf.eprintf "\n";
+             List.iter
+               (fun (repo, msg) -> Printf.eprintf "error: %s :: %s\n" repo msg)
+               errs)))]
   [@@name "miroir"] [@@version Version.get ()]
