@@ -36,7 +36,6 @@ buildDunePackage (finalAttrs: {
     fileset = unions [
       ../../../src
       ../../../dune-project
-      ../../../miroir.opam
     ];
   };
 
