@@ -105,9 +105,16 @@ let run_on ~fs ~mgr ~targets ~ctxs ~cfg (module M : Git.Op) ~force ~args =
       targets)
   else (
     let nrepos = List.length targets in
-    let rc = min cfg.general.concurrency.repo nrepos in
-    let rc_remote = cfg.general.concurrency.remote in
-    let mc = if rc_remote = 0 then nr else min rc_remote nr in
+    let rc =
+      if cfg.general.concurrency.repo = 0
+      then nrepos
+      else min cfg.general.concurrency.repo nrepos
+    in
+    let mc =
+      if cfg.general.concurrency.remote = 0
+      then nr
+      else min cfg.general.concurrency.remote nr
+    in
     let disp = Display.make ~repos:rc ~remotes:nr in
     let pool = pool_make rc in
     let remote_sem = Eio.Semaphore.make mc in
@@ -217,9 +224,16 @@ let sync_repo ~client ~cfg ~disp ~slot ~sem name =
            let targets, _ctxs, cfg = get_targets args in
            let nrepos = List.length targets in
            let nremotes = List.length cfg.platform in
-           let rc = min cfg.general.concurrency.repo nrepos in
-           let rc_remote = cfg.general.concurrency.remote in
-           let mc = if rc_remote = 0 then nremotes else min rc_remote nremotes in
+           let rc =
+             if cfg.general.concurrency.repo = 0
+             then nrepos
+             else min cfg.general.concurrency.repo nrepos
+           in
+           let mc =
+             if cfg.general.concurrency.remote = 0
+             then nremotes
+             else min cfg.general.concurrency.remote nremotes
+           in
            let client = Fetch.make_client net in
            let disp = Display.make ~repos:rc ~remotes:nremotes in
            let pool = pool_make rc in
