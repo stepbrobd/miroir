@@ -9,7 +9,7 @@
           inherit system;
           overlays = [
             (final: prev: {
-              ocamlPackages = prev.ocamlPackages.overrideScope (ocamlFinal: ocamlPrev:
+              ocamlPackages = prev.ocaml-ng.ocamlPackages_5_3.overrideScope (ocamlFinal: ocamlPrev:
                 (with self.lib; genAttrs
                   (attrNames (readDir ./src/pkg))
                   (name: ocamlFinal.callPackage ./src/pkg/${name} { }))
