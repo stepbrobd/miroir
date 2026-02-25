@@ -15,6 +15,8 @@
                   (name: ocamlFinal.callPackage ./src/pkg/${name} { }))
                 //
                 {
+                  # for some reason after 5.4 bump 5.3 compiler stuck at check phase on darwin
+                  ocaml = ocamlPrev.ocaml.overrideAttrs { doCheck = false; };
                   # -_-
                   dune = ocamlPrev.dune_3;
                   # https://github.com/nixos/nixpkgs/pull/356634
