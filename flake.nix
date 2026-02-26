@@ -41,6 +41,7 @@
           dune
           findlib
           ocaml
+          ocaml-lsp
           ocaml-print-intf
           ocamlformat
           utop
