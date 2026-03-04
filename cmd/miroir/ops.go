@@ -27,8 +27,7 @@ func gitCmd(use, short string, op git.Op) *cobra.Command {
 		Short:             short,
 		PersistentPreRunE: resolveTargets,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			runOn(op, forceFlag, args)
-			return nil
+			return runOn(op, forceFlag, args)
 		},
 	}
 }
@@ -40,8 +39,7 @@ func init() {
 		PersistentPreRunE: resolveTargets,
 		Args:              cobra.ArbitraryArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			runOn(git.Exec{}, forceFlag, args)
-			return nil
+			return runOn(git.Exec{}, forceFlag, args)
 		},
 	}
 
@@ -50,8 +48,7 @@ func init() {
 		Short:             "sync metadata to all forges",
 		PersistentPreRunE: resolveTargets,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			runSync()
-			return nil
+			return runSync()
 		},
 	}
 
@@ -65,14 +62,14 @@ func init() {
 	)
 }
 
-func runOn(op git.Op, force bool, extra []string) {
+func runOn(op git.Op, force bool, extra []string) error {
 	nr := op.Remotes(len(cfg.Platform))
 
-	var errors []struct{ repo, msg string }
+	var errs []struct{ repo, msg string }
 	var errMu sync.Mutex
 	addErr := func(repo, msg string) {
 		errMu.Lock()
-		errors = append(errors, struct{ repo, msg string }{repo, msg})
+		errs = append(errs, struct{ repo, msg string }{repo, msg})
 		errMu.Unlock()
 	}
 
@@ -131,12 +128,14 @@ func runOn(op git.Op, force bool, extra []string) {
 		disp.Finish()
 	}
 
-	if len(errors) > 0 {
+	if len(errs) > 0 {
 		fmt.Fprintln(os.Stderr)
-		for _, e := range errors {
+		for _, e := range errs {
 			errorf("%s :: %s", e.repo, e.msg)
 		}
+		return fmt.Errorf("%d operation(s) failed", len(errs))
 	}
+	return nil
 }
 
 func syncRepo(disp *display.Display, slot int, sem chan struct{}, name string) error {
@@ -149,9 +148,9 @@ func syncRepo(disp *display.Display, slot int, sem chan struct{}, name string) e
 
 	pnames := slices.Sorted(maps.Keys(cfg.Platform))
 	var (
-		mu     sync.Mutex
-		errors []string
-		wg     sync.WaitGroup
+		mu   sync.Mutex
+		errs []string
+		wg   sync.WaitGroup
 	)
 
 	for j, pname := range pnames {
@@ -181,7 +180,7 @@ func syncRepo(disp *display.Display, slot int, sem chan struct{}, name string) e
 				disp.Remote(slot, j, fmt.Sprintf("%s :: error", pname))
 				disp.Output(slot, j, err.Error())
 				mu.Lock()
-				errors = append(errors, fmt.Sprintf("%s/%s", pname, err))
+				errs = append(errs, fmt.Sprintf("%s/%s", pname, err))
 				mu.Unlock()
 				return
 			}
@@ -197,7 +196,7 @@ func syncRepo(disp *display.Display, slot int, sem chan struct{}, name string) e
 				disp.Remote(slot, j, fmt.Sprintf("%s :: error", pname))
 				disp.Output(slot, j, err.Error())
 				mu.Lock()
-				errors = append(errors, fmt.Sprintf("%s/%s", pname, err))
+				errs = append(errs, fmt.Sprintf("%s/%s", pname, err))
 				mu.Unlock()
 			} else {
 				disp.Remote(slot, j, fmt.Sprintf("%s :: done", pname))
@@ -207,13 +206,13 @@ func syncRepo(disp *display.Display, slot int, sem chan struct{}, name string) e
 	}
 	wg.Wait()
 
-	if len(errors) > 0 {
-		return fmt.Errorf("%s", strings.Join(errors, "; "))
+	if len(errs) > 0 {
+		return fmt.Errorf("%s", strings.Join(errs, "; "))
 	}
 	return nil
 }
 
-func runSync() {
+func runSync() error {
 	nrepos := len(targets)
 	nremotes := len(cfg.Platform)
 	rc := min(cfg.General.Concurrency.Repo, nrepos)
@@ -231,9 +230,9 @@ func runSync() {
 	sem := make(chan struct{}, mc)
 
 	var (
-		errors []struct{ repo, msg string }
-		errMu  sync.Mutex
-		wg     sync.WaitGroup
+		errs  []struct{ repo, msg string }
+		errMu sync.Mutex
+		wg    sync.WaitGroup
 	)
 
 	for _, target := range targets {
@@ -247,7 +246,7 @@ func runSync() {
 			name := filepath.Base(target)
 			if err := syncRepo(disp, slot, sem, name); err != nil {
 				errMu.Lock()
-				errors = append(errors, struct{ repo, msg string }{name, err.Error()})
+				errs = append(errs, struct{ repo, msg string }{name, err.Error()})
 				errMu.Unlock()
 			}
 		}(target)
@@ -255,10 +254,12 @@ func runSync() {
 	wg.Wait()
 	disp.Finish()
 
-	if len(errors) > 0 {
+	if len(errs) > 0 {
 		fmt.Fprintln(os.Stderr)
-		for _, e := range errors {
+		for _, e := range errs {
 			errorf("%s :: %s", e.repo, e.msg)
 		}
+		return fmt.Errorf("%d repo(s) failed to sync", len(errs))
 	}
+	return nil
 }

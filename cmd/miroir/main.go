@@ -61,7 +61,6 @@ func configPath() (string, error) {
 	return xdg.SearchConfigFile(filepath.Join("miroir", "config.toml"))
 }
 
-// PersistentPreRunE for subcommands that need targets
 func resolveTargets(cmd *cobra.Command, args []string) error {
 	if err := git.Available(); err != nil {
 		return err
