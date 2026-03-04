@@ -11,13 +11,16 @@
         };
       });
 
-      packages.default = pkgs.buildGoApplication {
-        pname = "miroir";
-        version = "dev";
-        src = ./.;
-        modules = ./gomod2nix.toml;
-        subPackages = [ "cmd/miroir" ];
-      };
+      packages.default =
+        let version = lib.fileContents ./version.txt;
+        in pkgs.buildGoApplication {
+          pname = "miroir";
+          inherit version;
+          src = ./.;
+          modules = ./gomod2nix.toml;
+          subPackages = [ "cmd/miroir" ];
+          ldflags = [ "-X" "main.version=${version}" ];
+        };
 
       devShells.default = pkgs.mkShell {
         inputsFrom = lib.attrValues self'.packages;
