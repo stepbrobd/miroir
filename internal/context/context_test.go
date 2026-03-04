@@ -8,9 +8,9 @@ import (
 
 func TestMakeURI(t *testing.T) {
 	tests := []struct {
-		access         config.Access
-		domain, user   string
-		repo, want     string
+		access       config.Access
+		domain, user string
+		repo, want   string
 	}{
 		{config.SSH, "github.com", "alice", "repo", "git@github.com:alice/repo"},
 		{config.SSH, "github.com", "", "repo", "git@github.com:repo"},
