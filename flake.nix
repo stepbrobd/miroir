@@ -8,56 +8,42 @@
         pkgs = import inputs.nixpkgs {
           inherit system;
           overlays = [
-            (final: prev: {
-              ocamlPackages = prev.ocaml-ng.ocamlPackages_5_3.overrideScope (ocamlFinal: ocamlPrev:
-                (with self.lib; genAttrs
-                  (attrNames (readDir ./src/pkg))
-                  (name: ocamlFinal.callPackage ./src/pkg/${name} { }))
-                //
-                {
-                  # for some reason after 5.4 bump 5.3 compiler stuck at check phase on darwin
-                  ocaml = ocamlPrev.ocaml.overrideAttrs { doCheck = false; };
-                  # -_-
-                  dune = ocamlPrev.dune_3;
-                  # https://github.com/nixos/nixpkgs/pull/356634
-                  mirage-crypto-rng = ocamlPrev.mirage-crypto-rng.overrideAttrs {
-                    doCheck = !(with final.stdenv; isDarwin && isAarch64);
-                  };
-                  # https://github.com/nixos/nixpkgs/pull/433017
-                  ppxlib = ocamlPrev.ppxlib.override {
-                    version = "0.33.0";
-                  };
-                });
-            })
+            inputs.gomod2nix.overlays.default
           ];
         };
       });
 
-      packages = { inherit (pkgs.ocamlPackages) miroir; };
+      packages.default = pkgs.buildGoApplication {
+        pname = "miroir";
+        version = "dev";
+        src = ./.;
+        modules = ./gomod2nix.toml;
+        subPackages = [ "cmd/miroir" ];
+      };
 
       devShells.default = pkgs.mkShell {
         inputsFrom = lib.attrValues self'.packages;
-        packages = with pkgs.ocamlPackages; [
-          dune
-          findlib
-          ocaml
-          ocaml-lsp
-          ocaml-print-intf
-          ocamlformat
-          utop
+        packages = with pkgs; [
+          go
+          go-tools
+          gomod2nix
+          gopls
         ];
       };
 
       formatter = pkgs.writeShellScriptBin "formatter" ''
-        ${lib.getExe pkgs.ocamlPackages.dune} fmt
         ${lib.getExe pkgs.nixpkgs-fmt} .
-        ${lib.getExe pkgs.taplo} format src/test/**/*.toml
       '';
     };
   };
 
   inputs.nixpkgs.url = "github:nixos/nixpkgs/nixpkgs-unstable";
+  inputs.systems.url = "github:nix-systems/default";
   inputs.parts.url = "github:hercules-ci/flake-parts";
   inputs.parts.inputs.nixpkgs-lib.follows = "nixpkgs";
-  inputs.systems.url = "github:nix-systems/default";
+  inputs.utils.url = "github:numtide/flake-utils";
+  inputs.utils.inputs.systems.follows = "systems";
+  inputs.gomod2nix.url = "github:nix-community/gomod2nix";
+  inputs.gomod2nix.inputs.nixpkgs.follows = "nixpkgs";
+  inputs.gomod2nix.inputs.flake-utils.follows = "utils";
 }
