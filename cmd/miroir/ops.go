@@ -14,6 +14,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"ysun.co/miroir/internal/config"
+	mirctx "ysun.co/miroir/internal/context"
 	"ysun.co/miroir/internal/display"
 	"ysun.co/miroir/internal/forge"
 	"ysun.co/miroir/internal/git"
@@ -46,7 +47,7 @@ func init() {
 	syncCmd := &cobra.Command{
 		Use:               "sync",
 		Short:             "sync metadata to all forges",
-		PersistentPreRunE: resolveTargets,
+		PersistentPreRunE: loadConfig,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runSync()
 		},
@@ -212,8 +213,41 @@ func syncRepo(disp *display.Display, slot int, sem chan struct{}, name string) e
 	return nil
 }
 
+// includes archived repos (unlike selectTargets which uses ctxs)
+func syncNames() ([]string, error) {
+	if nameFlag != "" {
+		if _, ok := cfg.Repo[nameFlag]; !ok {
+			return nil, fmt.Errorf("repo '%s' not found in config", nameFlag)
+		}
+		return []string{nameFlag}, nil
+	}
+	if allFlag {
+		return slices.Sorted(maps.Keys(cfg.Repo)), nil
+	}
+	home, err := mirctx.ExpandHome(cfg.General.Home)
+	if err != nil {
+		return nil, err
+	}
+	cwd, err := os.Getwd()
+	if err != nil {
+		return nil, fmt.Errorf("getwd: %w", err)
+	}
+	for _, name := range slices.Sorted(maps.Keys(cfg.Repo)) {
+		path := filepath.Join(home, name)
+		if path == cwd || strings.HasPrefix(cwd, path+string(filepath.Separator)) {
+			return []string{name}, nil
+		}
+	}
+	return nil, fmt.Errorf("not a managed repository (cwd: %s)", cwd)
+}
+
 func runSync() error {
-	nrepos := len(targets)
+	names, err := syncNames()
+	if err != nil {
+		return err
+	}
+
+	nrepos := len(names)
 	nremotes := len(cfg.Platform)
 	rc := min(cfg.General.Concurrency.Repo, nrepos)
 	rcRemote := cfg.General.Concurrency.Remote
@@ -235,21 +269,20 @@ func runSync() error {
 		wg    sync.WaitGroup
 	)
 
-	for _, target := range targets {
+	for _, name := range names {
 		wg.Add(1)
-		go func(target string) {
+		go func(name string) {
 			defer wg.Done()
 			slot := <-pool
 			defer func() { pool <- slot }()
 			disp.Clear(slot)
 
-			name := filepath.Base(target)
 			if err := syncRepo(disp, slot, sem, name); err != nil {
 				errMu.Lock()
 				errs = append(errs, struct{ repo, msg string }{name, err.Error()})
 				errMu.Unlock()
 			}
-		}(target)
+		}(name)
 	}
 	wg.Wait()
 	disp.Finish()

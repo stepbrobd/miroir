@@ -62,25 +62,27 @@ func configPath() (string, error) {
 	return xdg.SearchConfigFile(filepath.Join("miroir", "config.toml"))
 }
 
-func resolveTargets(cmd *cobra.Command, args []string) error {
-	if err := git.Available(); err != nil {
-		return err
-	}
-
+func loadConfig(cmd *cobra.Command, args []string) error {
 	path, err := configPath()
 	if err != nil {
 		return err
 	}
-
 	cfg, err = config.Load(path)
-	if err != nil {
+	return err
+}
+
+func resolveTargets(cmd *cobra.Command, args []string) error {
+	if err := git.Available(); err != nil {
 		return err
 	}
+	if err := loadConfig(cmd, args); err != nil {
+		return err
+	}
+	var err error
 	ctxs, err = context.MakeAll(cfg)
 	if err != nil {
 		return err
 	}
-
 	targets, err = selectTargets()
 	return err
 }
