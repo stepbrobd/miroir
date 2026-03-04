@@ -1,6 +1,7 @@
 package forge
 
 import (
+	"fmt"
 	"testing"
 
 	"ysun.co/miroir/internal/config"
@@ -40,5 +41,26 @@ func TestDescOrEmpty(t *testing.T) {
 	}
 	if got := descOrEmpty(nil); got != "" {
 		t.Errorf("got %q, want empty", got)
+	}
+}
+
+func TestSrhtIsExists(t *testing.T) {
+	tests := []struct {
+		msg  string
+		want bool
+	}{
+		{"this name is already in use", true},
+		{"repository already exists", true},
+		{"Already Exists", true},
+		{"invalid name", false},
+		{"repository not found", false},
+		{"permission denied", false},
+		{"internal server error", false},
+	}
+	for _, tt := range tests {
+		got := srhtIsExists(fmt.Errorf("%s", tt.msg))
+		if got != tt.want {
+			t.Errorf("srhtIsExists(%q) = %v, want %v", tt.msg, got, tt.want)
+		}
 	}
 }

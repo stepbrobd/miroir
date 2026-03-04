@@ -1,12 +1,13 @@
 package forge
 
 import (
+	"context"
+	"errors"
 	"fmt"
 
 	"ysun.co/miroir/internal/config"
 )
 
-// Meta holds repository metadata for forge sync
 type Meta struct {
 	Name     string
 	Desc     *string
@@ -14,20 +15,18 @@ type Meta struct {
 	Archived bool
 }
 
-// Forge defines operations on a git hosting platform
+// all methods accept context for timeout/cancellation propagation
 type Forge interface {
-	Create(user string, m Meta) error
-	Update(user string, m Meta) error
-	Archive(user, name string, flag bool) error
-	Delete(user, name string) error
-	List(user string) ([]string, error)
-	Sync(user string, m Meta) error
+	Create(ctx context.Context, user string, m Meta) error
+	Update(ctx context.Context, user string, m Meta) error
+	Archive(ctx context.Context, user, name string, flag bool) error
+	Delete(ctx context.Context, user, name string) error
+	List(ctx context.Context, user string) ([]string, error)
+	Sync(ctx context.Context, user string, m Meta) error
 }
 
-// ErrExists is returned when a repo already exists on the forge
-var ErrExists = fmt.Errorf("already exists")
+var ErrExists = errors.New("already exists")
 
-// Dispatch returns the forge implementation for a given forge type
 func Dispatch(f config.Forge, token string) (Forge, error) {
 	switch f {
 	case config.Github:

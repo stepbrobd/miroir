@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"maps"
 	"os"
@@ -8,6 +9,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -16,6 +18,8 @@ import (
 	"ysun.co/miroir/internal/forge"
 	"ysun.co/miroir/internal/git"
 )
+
+const syncTimeout = 30 * time.Second
 
 func gitCmd(use, short string, op git.Op) *cobra.Command {
 	return &cobra.Command{
@@ -181,13 +185,15 @@ func syncRepo(disp *display.Display, slot int, sem chan struct{}, name string) e
 				mu.Unlock()
 				return
 			}
+			ctx, cancel := context.WithTimeout(context.Background(), syncTimeout)
+			defer cancel()
 			meta := forge.Meta{
 				Name:     name,
 				Desc:     repo.Description,
 				Vis:      repo.Visibility,
 				Archived: repo.Archived,
 			}
-			if err := impl.Sync(p.User, meta); err != nil {
+			if err := impl.Sync(ctx, p.User, meta); err != nil {
 				disp.Remote(slot, j, fmt.Sprintf("%s :: error", pname))
 				disp.Output(slot, j, err.Error())
 				mu.Lock()

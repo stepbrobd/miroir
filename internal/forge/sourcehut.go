@@ -16,7 +16,6 @@ type srhtForge struct {
 	c *graphql.Client
 }
 
-// srhtTransport injects bearer token into every request
 type srhtTransport struct {
 	token string
 	base  http.RoundTripper
@@ -24,7 +23,11 @@ type srhtTransport struct {
 
 func (t *srhtTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	req.Header.Set("Authorization", "Bearer "+t.token)
-	return t.base.RoundTrip(req)
+	base := t.base
+	if base == nil {
+		base = http.DefaultTransport
+	}
+	return base.RoundTrip(req)
 }
 
 func newSourcehut(token string) *srhtForge {
@@ -35,7 +38,6 @@ func newSourcehut(token string) *srhtForge {
 	return &srhtForge{c: c}
 }
 
-// srhtVis maps to SourceHut's Visibility GraphQL enum
 type srhtVis string
 
 func (srhtVis) GetGraphQLType() string { return "Visibility" }
@@ -54,10 +56,10 @@ func srhtVisOf(v config.Visibility) srhtVis {
 
 func srhtIsExists(err error) bool {
 	s := strings.ToLower(err.Error())
-	return strings.Contains(s, "name") || strings.Contains(s, "repository")
+	return strings.Contains(s, "already exists") || strings.Contains(s, "already in use")
 }
 
-func (g *srhtForge) Create(_ string, m Meta) error {
+func (g *srhtForge) Create(ctx context.Context, _ string, m Meta) error {
 	var mut struct {
 		CreateRepository struct {
 			ID int
@@ -68,7 +70,7 @@ func (g *srhtForge) Create(_ string, m Meta) error {
 		"visibility":  srhtVisOf(m.Vis),
 		"description": graphql.String(descOrEmpty(m.Desc)),
 	}
-	err := g.c.Mutate(context.Background(), &mut, vars)
+	err := g.c.Mutate(ctx, &mut, vars)
 	if err != nil {
 		if srhtIsExists(err) {
 			return ErrExists
@@ -78,7 +80,7 @@ func (g *srhtForge) Create(_ string, m Meta) error {
 	return nil
 }
 
-func (g *srhtForge) repoID(name string) (int, error) {
+func (g *srhtForge) repoID(ctx context.Context, name string) (int, error) {
 	var q struct {
 		Me struct {
 			Repository struct {
@@ -89,7 +91,7 @@ func (g *srhtForge) repoID(name string) (int, error) {
 	vars := map[string]any{
 		"name": graphql.String(name),
 	}
-	if err := g.c.Query(context.Background(), &q, vars); err != nil {
+	if err := g.c.Query(ctx, &q, vars); err != nil {
 		return 0, err
 	}
 	if q.Me.Repository.ID == 0 {
@@ -106,8 +108,8 @@ type repoInput struct {
 
 func (repoInput) GetGraphQLType() string { return "RepoInput" }
 
-func (g *srhtForge) Update(_ string, m Meta) error {
-	id, err := g.repoID(m.Name)
+func (g *srhtForge) Update(ctx context.Context, _ string, m Meta) error {
+	id, err := g.repoID(ctx, m.Name)
 	if err != nil {
 		return err
 	}
@@ -124,15 +126,15 @@ func (g *srhtForge) Update(_ string, m Meta) error {
 			Visibility:  srhtVisOf(m.Vis),
 		},
 	}
-	return g.c.Mutate(context.Background(), &mut, vars)
+	return g.c.Mutate(ctx, &mut, vars)
 }
 
-func (g *srhtForge) Archive(_, _ string, _ bool) error {
+func (g *srhtForge) Archive(_ context.Context, _, _ string, _ bool) error {
 	return fmt.Errorf("sourcehut does not support archive via api")
 }
 
-func (g *srhtForge) Delete(_ string, name string) error {
-	id, err := g.repoID(name)
+func (g *srhtForge) Delete(ctx context.Context, _ string, name string) error {
+	id, err := g.repoID(ctx, name)
 	if err != nil {
 		return err
 	}
@@ -144,10 +146,10 @@ func (g *srhtForge) Delete(_ string, name string) error {
 	vars := map[string]any{
 		"id": graphql.Int(id),
 	}
-	return g.c.Mutate(context.Background(), &mut, vars)
+	return g.c.Mutate(ctx, &mut, vars)
 }
 
-func (g *srhtForge) List(_ string) ([]string, error) {
+func (g *srhtForge) List(ctx context.Context, _ string) ([]string, error) {
 	var q struct {
 		Me struct {
 			Repositories struct {
@@ -157,7 +159,7 @@ func (g *srhtForge) List(_ string) ([]string, error) {
 			}
 		}
 	}
-	if err := g.c.Query(context.Background(), &q, nil); err != nil {
+	if err := g.c.Query(ctx, &q, nil); err != nil {
 		return nil, err
 	}
 	names := make([]string, 0, len(q.Me.Repositories.Results))
@@ -167,14 +169,13 @@ func (g *srhtForge) List(_ string) ([]string, error) {
 	return names, nil
 }
 
-func (g *srhtForge) Sync(user string, m Meta) error {
-	err := g.Create(user, m)
+func (g *srhtForge) Sync(ctx context.Context, user string, m Meta) error {
+	err := g.Create(ctx, user, m)
 	if err == nil {
 		return nil
 	}
 	if err != ErrExists {
 		return err
 	}
-	// sourcehut has no archive support, just update
-	return g.Update(user, m)
+	return g.Update(ctx, user, m)
 }

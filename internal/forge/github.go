@@ -19,7 +19,7 @@ func newGithub(token string) *ghForge {
 
 func ghPrivate(v config.Visibility) bool { return v == config.Private }
 
-func (g *ghForge) Create(_ string, m Meta) error {
+func (g *ghForge) Create(ctx context.Context, _ string, m Meta) error {
 	desc := descOrEmpty(m.Desc)
 	priv := ghPrivate(m.Vis)
 	repo := &gh.Repository{
@@ -28,7 +28,7 @@ func (g *ghForge) Create(_ string, m Meta) error {
 		Private:     &priv,
 		AutoInit:    gh.Ptr(false),
 	}
-	_, resp, err := g.c.Repositories.Create(context.Background(), "", repo)
+	_, resp, err := g.c.Repositories.Create(ctx, "", repo)
 	if err != nil {
 		if resp != nil && (resp.StatusCode == http.StatusUnprocessableEntity || resp.StatusCode == http.StatusConflict) {
 			return ErrExists
@@ -38,7 +38,7 @@ func (g *ghForge) Create(_ string, m Meta) error {
 	return nil
 }
 
-func (g *ghForge) Update(user string, m Meta) error {
+func (g *ghForge) Update(ctx context.Context, user string, m Meta) error {
 	desc := descOrEmpty(m.Desc)
 	priv := ghPrivate(m.Vis)
 	repo := &gh.Repository{
@@ -47,27 +47,27 @@ func (g *ghForge) Update(user string, m Meta) error {
 		Private:     &priv,
 		Archived:    &m.Archived,
 	}
-	_, _, err := g.c.Repositories.Edit(context.Background(), user, m.Name, repo)
+	_, _, err := g.c.Repositories.Edit(ctx, user, m.Name, repo)
 	return err
 }
 
-func (g *ghForge) Archive(user, name string, flag bool) error {
+func (g *ghForge) Archive(ctx context.Context, user, name string, flag bool) error {
 	repo := &gh.Repository{Archived: &flag}
-	_, _, err := g.c.Repositories.Edit(context.Background(), user, name, repo)
+	_, _, err := g.c.Repositories.Edit(ctx, user, name, repo)
 	return err
 }
 
-func (g *ghForge) Delete(user, name string) error {
-	_, err := g.c.Repositories.Delete(context.Background(), user, name)
+func (g *ghForge) Delete(ctx context.Context, user, name string) error {
+	_, err := g.c.Repositories.Delete(ctx, user, name)
 	return err
 }
 
-func (g *ghForge) List(_ string) ([]string, error) {
+func (g *ghForge) List(ctx context.Context, _ string) ([]string, error) {
 	opt := &gh.RepositoryListByAuthenticatedUserOptions{
 		Type:        "owner",
 		ListOptions: gh.ListOptions{PerPage: 100},
 	}
-	repos, _, err := g.c.Repositories.ListByAuthenticatedUser(context.Background(), opt)
+	repos, _, err := g.c.Repositories.ListByAuthenticatedUser(ctx, opt)
 	if err != nil {
 		return nil, err
 	}
@@ -78,19 +78,19 @@ func (g *ghForge) List(_ string) ([]string, error) {
 	return names, nil
 }
 
-func (g *ghForge) Sync(user string, m Meta) error {
-	err := g.Create(user, m)
+func (g *ghForge) Sync(ctx context.Context, user string, m Meta) error {
+	err := g.Create(ctx, user, m)
 	if err == nil {
 		return nil
 	}
 	if err != ErrExists {
 		return err
 	}
-	if err := g.Update(user, m); err != nil {
+	if err := g.Update(ctx, user, m); err != nil {
 		return err
 	}
 	if m.Archived {
-		return g.Archive(user, m.Name, true)
+		return g.Archive(ctx, user, m.Name, true)
 	}
 	return nil
 }
