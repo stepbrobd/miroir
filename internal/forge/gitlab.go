@@ -55,13 +55,26 @@ func (g *glForge) Update(ctx context.Context, user string, m Meta) error {
 	return err
 }
 
+func glIsAlreadyArchived(resp *gl.Response, err error) bool {
+	if resp == nil || resp.StatusCode != 400 || err == nil {
+		return false
+	}
+	return true
+}
+
 func (g *glForge) Archive(ctx context.Context, user, name string, flag bool) error {
 	pid := user + "/" + name
 	if flag {
-		_, _, err := g.c.Projects.ArchiveProject(pid, gl.WithContext(ctx))
+		_, resp, err := g.c.Projects.ArchiveProject(pid, gl.WithContext(ctx))
+		if glIsAlreadyArchived(resp, err) {
+			return nil
+		}
 		return err
 	}
-	_, _, err := g.c.Projects.UnarchiveProject(pid, gl.WithContext(ctx))
+	_, resp, err := g.c.Projects.UnarchiveProject(pid, gl.WithContext(ctx))
+	if glIsAlreadyArchived(resp, err) {
+		return nil
+	}
 	return err
 }
 
@@ -98,8 +111,5 @@ func (g *glForge) Sync(ctx context.Context, user string, m Meta) error {
 	if err := g.Update(ctx, user, m); err != nil {
 		return err
 	}
-	if m.Archived {
-		return g.Archive(ctx, user, m.Name, true)
-	}
-	return nil
+	return g.Archive(ctx, user, m.Name, m.Archived)
 }

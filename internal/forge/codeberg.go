@@ -101,11 +101,5 @@ func (g *cbForge) Sync(ctx context.Context, user string, m Meta) error {
 	if err != ErrExists {
 		return err
 	}
-	if err := g.Update(ctx, user, m); err != nil {
-		return err
-	}
-	if m.Archived {
-		return g.Archive(ctx, user, m.Name, true)
-	}
-	return nil
+	return g.Update(ctx, user, m)
 }
