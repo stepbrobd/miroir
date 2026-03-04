@@ -77,7 +77,7 @@ func (Init) Run(p Params) error {
 	err := run(p.Path, p.Ctx.Env, false, out,
 		"branch", "--set-upstream-to=origin/"+p.Ctx.Branch, p.Ctx.Branch)
 	if err != nil {
-		info(fmt.Sprintf("error: %s", err))
+		p.Disp.ErrorRemote(p.Slot, j, fmt.Sprintf("error: %s", err))
 	} else {
 		info("done")
 	}

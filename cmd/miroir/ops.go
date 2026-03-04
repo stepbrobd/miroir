@@ -120,7 +120,7 @@ func runOn(op git.Op, force bool, extra []string) error {
 				if err != nil {
 					name := filepath.Base(target)
 					addErr(name, err.Error())
-					disp.Repo(slot, fmt.Sprintf("error: %s", err))
+					disp.Error(slot, fmt.Sprintf("error: %s", err))
 				}
 			}(target)
 		}
@@ -177,8 +177,8 @@ func syncRepo(disp *display.Display, slot int, sem chan struct{}, name string) e
 			disp.Remote(slot, j, fmt.Sprintf("%s :: syncing...", pname))
 			impl, err := forge.Dispatch(*f, *t)
 			if err != nil {
-				disp.Remote(slot, j, fmt.Sprintf("%s :: error", pname))
-				disp.Output(slot, j, err.Error())
+				disp.ErrorRemote(slot, j, fmt.Sprintf("%s :: error", pname))
+				disp.ErrorOutput(slot, j, err.Error())
 				mu.Lock()
 				errs = append(errs, fmt.Sprintf("%s/%s", pname, err))
 				mu.Unlock()
@@ -193,8 +193,8 @@ func syncRepo(disp *display.Display, slot int, sem chan struct{}, name string) e
 				Archived: repo.Archived,
 			}
 			if err := impl.Sync(ctx, p.User, meta); err != nil {
-				disp.Remote(slot, j, fmt.Sprintf("%s :: error", pname))
-				disp.Output(slot, j, err.Error())
+				disp.ErrorRemote(slot, j, fmt.Sprintf("%s :: error", pname))
+				disp.ErrorOutput(slot, j, err.Error())
 				mu.Lock()
 				errs = append(errs, fmt.Sprintf("%s/%s", pname, err))
 				mu.Unlock()

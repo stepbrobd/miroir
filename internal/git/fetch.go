@@ -40,8 +40,8 @@ func (Fetch) Run(p Params) error {
 				append([]string{"fetch", r.Name}, p.Args...)...)
 
 			if err != nil {
-				p.Disp.Remote(p.Slot, j, fmt.Sprintf("%s :: error", r.Name))
-				p.Disp.Output(p.Slot, j, err.Error())
+				p.Disp.ErrorRemote(p.Slot, j, fmt.Sprintf("%s :: error", r.Name))
+				p.Disp.ErrorOutput(p.Slot, j, err.Error())
 			} else {
 				p.Disp.Remote(p.Slot, j, fmt.Sprintf("%s :: done", r.Name))
 			}

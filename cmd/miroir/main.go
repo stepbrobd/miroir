@@ -14,6 +14,7 @@ import (
 
 	"ysun.co/miroir/internal/config"
 	"ysun.co/miroir/internal/context"
+	"ysun.co/miroir/internal/display"
 	"ysun.co/miroir/internal/git"
 )
 
@@ -114,7 +115,8 @@ func selectTargets() ([]string, error) {
 }
 
 func errorf(format string, v ...any) {
-	fmt.Fprintf(os.Stderr, "error: "+format+"\n", v...)
+	msg := fmt.Sprintf("error: "+format, v...)
+	fmt.Fprintln(os.Stderr, display.DefaultTheme.Error.Render(msg))
 }
 
 func main() {

@@ -23,6 +23,18 @@ type outputMsg struct {
 	slot, j int
 	text    string
 }
+type errorMsg struct {
+	slot int
+	text string
+}
+type errorRemoteMsg struct {
+	slot, j int
+	text    string
+}
+type errorOutputMsg struct {
+	slot, j int
+	text    string
+}
 type clearMsg struct{ slot int }
 type finishMsg struct{}
 
@@ -56,6 +68,18 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case outputMsg:
 		if l := msg.slot*m.stride + 2 + 2*msg.j; l < len(m.lines) {
 			m.lines[l] = m.theme.Output.Render(msg.text)
+		}
+	case errorMsg:
+		if l := msg.slot * m.stride; l < len(m.lines) {
+			m.lines[l] = m.theme.Error.Render(msg.text)
+		}
+	case errorRemoteMsg:
+		if l := msg.slot*m.stride + 1 + 2*msg.j; l < len(m.lines) {
+			m.lines[l] = m.theme.Error.PaddingLeft(2).Render(msg.text)
+		}
+	case errorOutputMsg:
+		if l := msg.slot*m.stride + 2 + 2*msg.j; l < len(m.lines) {
+			m.lines[l] = m.theme.Error.PaddingLeft(4).Render(msg.text)
 		}
 	case clearMsg:
 		base := msg.slot * m.stride
@@ -139,6 +163,36 @@ func (d *Display) Output(slot, j int, msg string) {
 	} else {
 		d.mu.Lock()
 		d.log.Debug(msg, "indent", 2)
+		d.mu.Unlock()
+	}
+}
+
+func (d *Display) Error(slot int, msg string) {
+	if d.tty {
+		d.prog.Send(errorMsg{slot, msg})
+	} else {
+		d.mu.Lock()
+		d.log.Error(msg)
+		d.mu.Unlock()
+	}
+}
+
+func (d *Display) ErrorRemote(slot, j int, msg string) {
+	if d.tty {
+		d.prog.Send(errorRemoteMsg{slot, j, msg})
+	} else {
+		d.mu.Lock()
+		d.log.Error(msg, "indent", 1)
+		d.mu.Unlock()
+	}
+}
+
+func (d *Display) ErrorOutput(slot, j int, msg string) {
+	if d.tty {
+		d.prog.Send(errorOutputMsg{slot, j, msg})
+	} else {
+		d.mu.Lock()
+		d.log.Error(msg, "indent", 2)
 		d.mu.Unlock()
 	}
 }

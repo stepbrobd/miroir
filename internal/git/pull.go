@@ -19,7 +19,7 @@ func (Pull) Run(p Params) error {
 
 	if !p.Force && isDirty(p.Path, p.Ctx.Env) {
 		msg := "dirty working tree, use --force to override"
-		info(fmt.Sprintf("error: %s", msg))
+		p.Disp.ErrorRemote(p.Slot, j, fmt.Sprintf("error: %s", msg))
 		return fmt.Errorf("%s", msg)
 	}
 
@@ -41,7 +41,7 @@ func (Pull) Run(p Params) error {
 	err := run(p.Path, p.Ctx.Env, false, out,
 		"submodule", "update", "--recursive", "--remote")
 	if err != nil {
-		info(fmt.Sprintf("error: %s", err))
+		p.Disp.ErrorRemote(p.Slot, j, fmt.Sprintf("error: %s", err))
 	} else {
 		info("done")
 	}
