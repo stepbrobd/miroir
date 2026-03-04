@@ -7,9 +7,7 @@
         lib = with inputs; builtins // nixpkgs.lib // parts.lib;
         pkgs = import inputs.nixpkgs {
           inherit system;
-          overlays = [
-            inputs.gomod2nix.overlays.default
-          ];
+          overlays = [ inputs.gomod2nix.overlays.default ];
         };
       });
 
@@ -32,7 +30,27 @@
       };
 
       formatter = pkgs.writeShellScriptBin "formatter" ''
+        set -eoux pipefail
+        shopt -s globstar
+
+        root="$PWD"
+        while [[ ! -f "$root/.git/index" ]]; do
+          if [[ "$root" == "/" ]]; then
+            exit 1
+          fi
+          root="$(dirname "$root")"
+        done
+        pushd "$root" > /dev/null
+
+        ${lib.getExe pkgs.gomod2nix}
+        ${lib.getExe pkgs.go} fix ./...
+        ${lib.getExe pkgs.go} fmt ./...
+        ${lib.getExe pkgs.go} vet ./...
         ${lib.getExe pkgs.nixpkgs-fmt} .
+        ${lib.getExe pkgs.taplo} format **/*.toml
+        ${lib.getExe' pkgs.go-tools "staticcheck"} ./...
+
+        popd
       '';
     };
   };
