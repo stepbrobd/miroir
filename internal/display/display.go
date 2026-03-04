@@ -7,6 +7,7 @@ import (
 	"sync"
 
 	tea "charm.land/bubbletea/v2"
+	lipgloss "charm.land/lipgloss/v2"
 	"github.com/charmbracelet/log"
 	"golang.org/x/term"
 )
@@ -40,17 +41,18 @@ type finishMsg struct{}
 
 type model struct {
 	lines   []string
+	width   int
 	stride  int
 	repos   int
 	remotes int
 	theme   Theme
 }
 
-func newModel(repos, remotes int, th Theme) model {
+func newModel(repos, remotes, width int, th Theme) model {
 	stride := 1 + 2*remotes
 	total := repos * stride
 	lines := make([]string, max(1, total))
-	return model{lines: lines, stride: stride, repos: repos, remotes: remotes, theme: th}
+	return model{lines: lines, width: width, stride: stride, repos: repos, remotes: remotes, theme: th}
 }
 
 func (m model) Init() tea.Cmd { return nil }
@@ -98,6 +100,9 @@ func (m model) View() tea.View {
 	var b strings.Builder
 	for i, l := range m.lines {
 		b.WriteString(l)
+		if pad := m.width - lipgloss.Width(l); pad > 0 {
+			b.WriteString(strings.Repeat(" ", pad))
+		}
 		if i < len(m.lines)-1 {
 			b.WriteByte('\n')
 		}
@@ -119,7 +124,11 @@ func New(repos, remotes int, th Theme) *Display {
 	d := &Display{tty: tty, done: make(chan error, 1)}
 
 	if tty {
-		m := newModel(repos, remotes, th)
+		w, _, _ := term.GetSize(int(os.Stdout.Fd()))
+		if w <= 0 {
+			w = 80
+		}
+		m := newModel(repos, remotes, w, th)
 		d.prog = tea.NewProgram(m,
 			tea.WithInput(bytes.NewReader(nil)),
 			tea.WithoutSignalHandler(),
