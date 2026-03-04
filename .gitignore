@@ -1,5 +1,5 @@
 *.a
 *.o
-.direnv/
-result/
-result-*/
+.direnv
+result
+result-*
