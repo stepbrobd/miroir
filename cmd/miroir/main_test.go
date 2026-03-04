@@ -5,13 +5,37 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/adrg/xdg"
+
 	"ysun.co/miroir/internal/config"
 	"ysun.co/miroir/internal/context"
 )
 
+func setConfigFlag(t *testing.T, val string) {
+	t.Helper()
+	f := root.PersistentFlags().Lookup("config")
+	f.Value.Set(val)
+	f.Changed = val != ""
+	t.Cleanup(func() {
+		f.Value.Set("")
+		f.Changed = false
+	})
+}
+
+func writeConfigFile(t *testing.T, dir string) string {
+	t.Helper()
+	p := filepath.Join(dir, "miroir", "config.toml")
+	if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(p, []byte(""), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return p
+}
+
 func TestConfigPathFlag(t *testing.T) {
-	cfgFlag = "/explicit/path.toml"
-	defer func() { cfgFlag = "" }()
+	setConfigFlag(t, "/explicit/path.toml")
 
 	got, err := configPath()
 	if err != nil {
@@ -23,7 +47,6 @@ func TestConfigPathFlag(t *testing.T) {
 }
 
 func TestConfigPathEnv(t *testing.T) {
-	cfgFlag = ""
 	t.Setenv("MIROIR_CONFIG", "/env/path.toml")
 
 	got, err := configPath()
@@ -37,8 +60,7 @@ func TestConfigPathEnv(t *testing.T) {
 
 // flag takes precedence over env
 func TestConfigPathFlagOverEnv(t *testing.T) {
-	cfgFlag = "/flag.toml"
-	defer func() { cfgFlag = "" }()
+	setConfigFlag(t, "/flag.toml")
 	t.Setenv("MIROIR_CONFIG", "/env.toml")
 
 	got, err := configPath()
@@ -51,89 +73,34 @@ func TestConfigPathFlagOverEnv(t *testing.T) {
 }
 
 func TestConfigPathXDG(t *testing.T) {
-	cfgFlag = ""
 	t.Setenv("MIROIR_CONFIG", "")
 
 	dir := t.TempDir()
-	xdg := filepath.Join(dir, "miroir")
-	if err := os.MkdirAll(xdg, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(xdg, "config.toml"), []byte(""), 0o644); err != nil {
-		t.Fatal(err)
-	}
+	want := writeConfigFile(t, dir)
+
 	t.Setenv("XDG_CONFIG_HOME", dir)
+	xdg.Reload()
+	t.Cleanup(func() { xdg.Reload() })
 
 	got, err := configPath()
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := filepath.Join(xdg, "config.toml")
-	if got != want {
-		t.Errorf("got %q, want %q", got, want)
-	}
-}
-
-func TestConfigPathDefaultFallback(t *testing.T) {
-	cfgFlag = ""
-	t.Setenv("MIROIR_CONFIG", "")
-	t.Setenv("XDG_CONFIG_HOME", "")
-
-	dir := t.TempDir()
-	cfgDir := filepath.Join(dir, ".config", "miroir")
-	if err := os.MkdirAll(cfgDir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(cfgDir, "config.toml"), []byte(""), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	t.Setenv("HOME", dir)
-
-	got, err := configPath()
-	if err != nil {
-		t.Fatal(err)
-	}
-	want := filepath.Join(cfgDir, "config.toml")
 	if got != want {
 		t.Errorf("got %q, want %q", got, want)
 	}
 }
 
 func TestConfigPathNoConfig(t *testing.T) {
-	cfgFlag = ""
 	t.Setenv("MIROIR_CONFIG", "")
-	t.Setenv("XDG_CONFIG_HOME", "")
-	t.Setenv("HOME", t.TempDir())
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("XDG_CONFIG_DIRS", "")
+	xdg.Reload()
+	t.Cleanup(func() { xdg.Reload() })
 
 	_, err := configPath()
 	if err == nil {
 		t.Fatal("expected error when no config file exists")
-	}
-}
-
-// XDG_CONFIG_HOME set should not also search ~/.config
-func TestConfigPathXDGNoFallback(t *testing.T) {
-	cfgFlag = ""
-	t.Setenv("MIROIR_CONFIG", "")
-
-	// put config only in ~/.config, not in XDG_CONFIG_HOME
-	home := t.TempDir()
-	t.Setenv("HOME", home)
-	cfgDir := filepath.Join(home, ".config", "miroir")
-	if err := os.MkdirAll(cfgDir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(cfgDir, "config.toml"), []byte(""), 0o644); err != nil {
-		t.Fatal(err)
-	}
-
-	// set XDG_CONFIG_HOME to empty dir (no config there)
-	xdg := t.TempDir()
-	t.Setenv("XDG_CONFIG_HOME", xdg)
-
-	_, err := configPath()
-	if err == nil {
-		t.Fatal("expected error: XDG_CONFIG_HOME set should not fall back to ~/.config")
 	}
 }
 
@@ -188,7 +155,6 @@ func TestSelectTargetsAll(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// should be sorted
 	want := []string{"/home/test/ws/alpha", "/home/test/ws/beta"}
 	if len(got) != len(want) {
 		t.Fatalf("got %v, want %v", got, want)

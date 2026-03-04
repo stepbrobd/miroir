@@ -8,6 +8,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/adrg/xdg"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
@@ -19,7 +20,6 @@ import (
 var version = "dev"
 
 var (
-	cfgFlag   string
 	nameFlag  string
 	allFlag   bool
 	forceFlag bool
@@ -33,47 +33,32 @@ var (
 var root = &cobra.Command{
 	Use:           "miroir",
 	Short:         "Repo manager wannabe?",
-	Version:       version,
 	SilenceUsage:  true,
 	SilenceErrors: true,
 }
 
 func init() {
+	root.Version = version
+
 	f := root.PersistentFlags()
-	f.StringVarP(&cfgFlag, "config", "c", "", "config file path (or set MIROIR_CONFIG)")
+	f.StringP("config", "c", "", "config file path")
 	f.StringVarP(&nameFlag, "name", "n", "", "target repo by name")
 	f.BoolVarP(&allFlag, "all", "a", false, "target all repos")
 	f.BoolVarP(&forceFlag, "force", "f", false, "force operation")
 }
 
-// priority: flag > MIROIR_CONFIG env > XDG via viper
+// viper resolves flag > env (MIROIR_CONFIG); xdg searches config dirs
 func configPath() (string, error) {
-	if cfgFlag != "" {
-		return cfgFlag, nil
-	}
-	if env := os.Getenv("MIROIR_CONFIG"); env != "" {
-		return env, nil
-	}
-
 	v := viper.New()
-	v.SetConfigName("config")
-	v.SetConfigType("toml")
+	v.SetEnvPrefix("MIROIR")
+	v.BindEnv("config")
+	v.BindPFlag("config", root.PersistentFlags().Lookup("config"))
 
-	// XDG spec: use XDG_CONFIG_HOME if set, otherwise fall back to ~/.config
-	if xdg := os.Getenv("XDG_CONFIG_HOME"); xdg != "" {
-		v.AddConfigPath(filepath.Join(xdg, "miroir"))
-	} else {
-		home, err := os.UserHomeDir()
-		if err != nil {
-			return "", fmt.Errorf("cannot determine home directory: %w", err)
-		}
-		v.AddConfigPath(filepath.Join(home, ".config", "miroir"))
+	if p := v.GetString("config"); p != "" {
+		return p, nil
 	}
 
-	if err := v.ReadInConfig(); err != nil {
-		return "", fmt.Errorf("no config file found (use -c/--config or set MIROIR_CONFIG)")
-	}
-	return v.ConfigFileUsed(), nil
+	return xdg.SearchConfigFile(filepath.Join("miroir", "config.toml"))
 }
 
 // used as PersistentPreRunE for subcommands that need targets

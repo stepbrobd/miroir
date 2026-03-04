@@ -13,6 +13,10 @@ hash = 'sha256-Yrf21S5q6mupTtyk8izVKQciJC/aRDe7YRKL0cBkRpQ='
 version = 'v1.6.0'
 hash = 'sha256-ptdUJvuc21ixeLt+M5way/na3aCnCO4MYHWulWp8NEY='
 
+[mod.'github.com/adrg/xdg']
+version = 'v0.5.3'
+hash = 'sha256-bo6tBgHS+3sl6f4oWpmdFrZjfV6eA/3xAlysSW0bIEs='
+
 [mod.'github.com/aymanbagabas/go-osc52/v2']
 version = 'v2.0.1'
 hash = 'sha256-6Bp0jBZ6npvsYcKZGHHIUSVSTAMEyieweAX2YAKDjjg='
