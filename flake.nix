@@ -45,6 +45,7 @@
         done
         pushd "$root" > /dev/null
 
+        ${lib.getExe pkgs.deno} fmt readme.md
         ${lib.getExe pkgs.gomod2nix}
         ${lib.getExe pkgs.go} fix ./...
         ${lib.getExe pkgs.go} fmt ./...
