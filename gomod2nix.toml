@@ -1,10 +1,6 @@
 schema = 3
 
 [mod]
-[mod.'charm.land/bubbletea/v2']
-version = 'v2.0.1'
-hash = 'sha256-mJmViMvgdOsa+FiFPmly5HSBuHxwvDw1fAvon6VpD4I='
-
 [mod.'charm.land/lipgloss/v2']
 version = 'v2.0.0'
 hash = 'sha256-O78AzqA19r2N7DpRwj7pCk57Spqo8FkdD1J8frGQqoc='

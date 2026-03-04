@@ -2,6 +2,7 @@ package forge
 
 import (
 	"context"
+	"errors"
 	"net/http"
 
 	gh "github.com/google/go-github/v84/github"
@@ -78,6 +79,12 @@ func (g *ghForge) List(ctx context.Context, _ string) ([]string, error) {
 	return names, nil
 }
 
+func ghIsArchived(err error) bool {
+	var e *gh.ErrorResponse
+	return errors.As(err, &e) && e.Response != nil &&
+		e.Response.StatusCode == http.StatusForbidden
+}
+
 func (g *ghForge) Sync(ctx context.Context, user string, m Meta) error {
 	err := g.Create(ctx, user, m)
 	if err == nil {
@@ -86,5 +93,15 @@ func (g *ghForge) Sync(ctx context.Context, user string, m Meta) error {
 	if err != ErrExists {
 		return err
 	}
-	return g.Update(ctx, user, m)
+	if err := g.Update(ctx, user, m); err != nil {
+		if !ghIsArchived(err) {
+			return err
+		}
+		// repo is archived on remote; unarchive, update, re-archive if needed
+		if err := g.Archive(ctx, user, m.Name, false); err != nil {
+			return err
+		}
+		return g.Update(ctx, user, m)
+	}
+	return nil
 }

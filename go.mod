@@ -3,7 +3,6 @@ module ysun.co/miroir
 go 1.25.7
 
 require (
-	charm.land/bubbletea/v2 v2.0.1
 	charm.land/lipgloss/v2 v2.0.0
 	code.gitea.io/sdk/gitea v0.23.2
 	github.com/BurntSushi/toml v1.6.0

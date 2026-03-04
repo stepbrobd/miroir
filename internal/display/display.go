@@ -1,146 +1,64 @@
 package display
 
 import (
-	"bytes"
+	"fmt"
 	"os"
 	"strings"
 	"sync"
 
-	tea "charm.land/bubbletea/v2"
 	lipgloss "charm.land/lipgloss/v2"
 	"github.com/charmbracelet/log"
 	"golang.org/x/term"
 )
 
-type repoMsg struct {
-	slot int
+type lineKind int8
+
+const (
+	lineEmpty lineKind = iota
+	lineRepo
+	lineRemote
+	lineOutput
+	lineError
+	lineErrorRemote
+	lineErrorOutput
+)
+
+type line struct {
 	text string
-}
-type remoteMsg struct {
-	slot, j int
-	text    string
-}
-type outputMsg struct {
-	slot, j int
-	text    string
-}
-type errorMsg struct {
-	slot int
-	text string
-}
-type errorRemoteMsg struct {
-	slot, j int
-	text    string
-}
-type errorOutputMsg struct {
-	slot, j int
-	text    string
-}
-type clearMsg struct{ slot int }
-type finishMsg struct{}
-
-type model struct {
-	lines   []string
-	width   int
-	stride  int
-	repos   int
-	remotes int
-	theme   Theme
+	kind lineKind
 }
 
-func newModel(repos, remotes, width int, th Theme) model {
-	stride := 1 + 2*remotes
-	total := repos * stride
-	lines := make([]string, max(1, total))
-	return model{lines: lines, width: width, stride: stride, repos: repos, remotes: remotes, theme: th}
-}
-
-func (m model) Init() tea.Cmd { return nil }
-
-func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	switch msg := msg.(type) {
-	case repoMsg:
-		if l := msg.slot * m.stride; l < len(m.lines) {
-			m.lines[l] = m.theme.Repo.Render(msg.text)
-		}
-	case remoteMsg:
-		if l := msg.slot*m.stride + 1 + 2*msg.j; l < len(m.lines) {
-			m.lines[l] = m.theme.Remote.Render(msg.text)
-		}
-	case outputMsg:
-		if l := msg.slot*m.stride + 2 + 2*msg.j; l < len(m.lines) {
-			m.lines[l] = m.theme.Output.Render(msg.text)
-		}
-	case errorMsg:
-		if l := msg.slot * m.stride; l < len(m.lines) {
-			m.lines[l] = m.theme.Error.Render(msg.text)
-		}
-	case errorRemoteMsg:
-		if l := msg.slot*m.stride + 1 + 2*msg.j; l < len(m.lines) {
-			m.lines[l] = m.theme.Error.PaddingLeft(2).Render(msg.text)
-		}
-	case errorOutputMsg:
-		if l := msg.slot*m.stride + 2 + 2*msg.j; l < len(m.lines) {
-			m.lines[l] = m.theme.Error.PaddingLeft(4).Render(msg.text)
-		}
-	case clearMsg:
-		base := msg.slot * m.stride
-		for i := range m.stride {
-			if base+i < len(m.lines) {
-				m.lines[base+i] = ""
-			}
-		}
-	case finishMsg:
-		return m, tea.Quit
-	}
-	return m, nil
-}
-
-func (m model) View() tea.View {
-	var b strings.Builder
-	for i, l := range m.lines {
-		b.WriteString(l)
-		if pad := m.width - lipgloss.Width(l); pad > 0 {
-			b.WriteString(strings.Repeat(" ", pad))
-		}
-		if i < len(m.lines)-1 {
-			b.WriteByte('\n')
-		}
-	}
-	return tea.NewView(b.String())
-}
-
+// Display renders a live-updating progress grid in TTY mode
+// using direct ANSI escape codes, or structured log in non-TTY mode.
 type Display struct {
-	tty  bool
-	prog *tea.Program
-	done chan error
-	log  *log.Logger
-	mu   sync.Mutex // guards log writes in non-TTY mode
+	tty    bool
+	mu     sync.Mutex
+	lines  []line
+	width  int
+	stride int
+	theme  Theme
+	drawn  bool
+	log    *log.Logger
 }
 
-// bubbletea when stdout is a TTY, charm log otherwise.
+// direct ANSI when stdout is a TTY, charm log otherwise.
 // ttyOverride forces the mode when non-nil.
 func New(repos, remotes int, th Theme, ttyOverride *bool) *Display {
 	tty := term.IsTerminal(int(os.Stdout.Fd()))
 	if ttyOverride != nil {
 		tty = *ttyOverride
 	}
-	d := &Display{tty: tty, done: make(chan error, 1)}
+	d := &Display{tty: tty, theme: th}
 
 	if tty {
 		w, _, _ := term.GetSize(int(os.Stdout.Fd()))
 		if w <= 0 {
 			w = 80
 		}
-		m := newModel(repos, remotes, w, th)
-		d.prog = tea.NewProgram(m,
-			tea.WithInput(bytes.NewReader(nil)),
-			tea.WithoutSignalHandler(),
-		)
-		go func() {
-			_, err := d.prog.Run()
-			d.done <- err
-		}()
+		d.width = w
+		d.stride = 1 + 2*remotes
+		total := repos * d.stride
+		d.lines = make([]line, max(1, total))
 	} else {
 		d.log = log.NewWithOptions(os.Stdout, log.Options{
 			ReportTimestamp: false,
@@ -150,9 +68,53 @@ func New(repos, remotes int, th Theme, ttyOverride *bool) *Display {
 	return d
 }
 
+func (d *Display) styled(k lineKind) lipgloss.Style {
+	w := d.width
+	switch k {
+	case lineRepo:
+		return d.theme.Repo.Width(w).MaxWidth(w)
+	case lineRemote:
+		return d.theme.Remote.Width(w).MaxWidth(w)
+	case lineOutput:
+		return d.theme.Output.Width(w).MaxWidth(w)
+	case lineError:
+		return d.theme.Error.Width(w).MaxWidth(w)
+	case lineErrorRemote:
+		return d.theme.Error.PaddingLeft(2).Width(w).MaxWidth(w)
+	case lineErrorOutput:
+		return d.theme.Error.PaddingLeft(4).Width(w).MaxWidth(w)
+	default:
+		return lipgloss.NewStyle().Width(w).MaxWidth(w)
+	}
+}
+
+// redraw repaints all lines. caller must hold d.mu.
+func (d *Display) redraw() {
+	var buf strings.Builder
+	if d.drawn {
+		fmt.Fprintf(&buf, "\x1b[%dA", len(d.lines))
+	}
+	for _, l := range d.lines {
+		buf.WriteString("\x1b[2K")
+		buf.WriteString(d.styled(l.kind).Render(l.text))
+		buf.WriteByte('\n')
+	}
+	os.Stdout.WriteString(buf.String())
+	d.drawn = true
+}
+
+func (d *Display) set(idx int, l line) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if idx >= 0 && idx < len(d.lines) {
+		d.lines[idx] = l
+	}
+	d.redraw()
+}
+
 func (d *Display) Repo(slot int, msg string) {
 	if d.tty {
-		d.prog.Send(repoMsg{slot, msg})
+		d.set(slot*d.stride, line{msg, lineRepo})
 	} else {
 		d.mu.Lock()
 		d.log.Info(msg)
@@ -162,7 +124,7 @@ func (d *Display) Repo(slot int, msg string) {
 
 func (d *Display) Remote(slot, j int, msg string) {
 	if d.tty {
-		d.prog.Send(remoteMsg{slot, j, msg})
+		d.set(slot*d.stride+1+2*j, line{msg, lineRemote})
 	} else {
 		d.mu.Lock()
 		d.log.Info(msg, "indent", 1)
@@ -172,7 +134,7 @@ func (d *Display) Remote(slot, j int, msg string) {
 
 func (d *Display) Output(slot, j int, msg string) {
 	if d.tty {
-		d.prog.Send(outputMsg{slot, j, msg})
+		d.set(slot*d.stride+2+2*j, line{msg, lineOutput})
 	} else {
 		d.mu.Lock()
 		d.log.Debug(msg, "indent", 2)
@@ -182,7 +144,7 @@ func (d *Display) Output(slot, j int, msg string) {
 
 func (d *Display) Error(slot int, msg string) {
 	if d.tty {
-		d.prog.Send(errorMsg{slot, msg})
+		d.set(slot*d.stride, line{msg, lineError})
 	} else {
 		d.mu.Lock()
 		d.log.Error(msg)
@@ -192,7 +154,7 @@ func (d *Display) Error(slot int, msg string) {
 
 func (d *Display) ErrorRemote(slot, j int, msg string) {
 	if d.tty {
-		d.prog.Send(errorRemoteMsg{slot, j, msg})
+		d.set(slot*d.stride+1+2*j, line{msg, lineErrorRemote})
 	} else {
 		d.mu.Lock()
 		d.log.Error(msg, "indent", 1)
@@ -202,7 +164,7 @@ func (d *Display) ErrorRemote(slot, j int, msg string) {
 
 func (d *Display) ErrorOutput(slot, j int, msg string) {
 	if d.tty {
-		d.prog.Send(errorOutputMsg{slot, j, msg})
+		d.set(slot*d.stride+2+2*j, line{msg, lineErrorOutput})
 	} else {
 		d.mu.Lock()
 		d.log.Error(msg, "indent", 2)
@@ -212,13 +174,22 @@ func (d *Display) ErrorOutput(slot, j int, msg string) {
 
 func (d *Display) Clear(slot int) {
 	if d.tty {
-		d.prog.Send(clearMsg{slot})
+		d.mu.Lock()
+		defer d.mu.Unlock()
+		base := slot * d.stride
+		for i := range d.stride {
+			if base+i < len(d.lines) {
+				d.lines[base+i] = line{}
+			}
+		}
+		d.redraw()
 	}
 }
 
 func (d *Display) Finish() {
 	if d.tty {
-		d.prog.Send(finishMsg{})
-		<-d.done
+		d.mu.Lock()
+		d.redraw()
+		d.mu.Unlock()
 	}
 }

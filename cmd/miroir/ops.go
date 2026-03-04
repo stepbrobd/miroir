@@ -139,7 +139,12 @@ func runOn(op git.Op, force bool, extra []string) error {
 	return nil
 }
 
-func syncRepo(disp *display.Display, slot int, sem chan struct{}, name string) error {
+type remoteErr struct {
+	remote string
+	msg    string
+}
+
+func syncRepo(disp *display.Display, slot int, sem chan struct{}, name string) []remoteErr {
 	repo, ok := cfg.Repo[name]
 	if !ok {
 		disp.Repo(slot, fmt.Sprintf("%s :: sync :: no repo config", name))
@@ -150,7 +155,7 @@ func syncRepo(disp *display.Display, slot int, sem chan struct{}, name string) e
 	pnames := slices.Sorted(maps.Keys(cfg.Platform))
 	var (
 		mu   sync.Mutex
-		errs []string
+		errs []remoteErr
 		wg   sync.WaitGroup
 	)
 
@@ -181,7 +186,7 @@ func syncRepo(disp *display.Display, slot int, sem chan struct{}, name string) e
 				disp.ErrorRemote(slot, j, fmt.Sprintf("%s :: error", pname))
 				disp.ErrorOutput(slot, j, err.Error())
 				mu.Lock()
-				errs = append(errs, fmt.Sprintf("%s/%s", pname, err))
+				errs = append(errs, remoteErr{pname, err.Error()})
 				mu.Unlock()
 				return
 			}
@@ -197,7 +202,7 @@ func syncRepo(disp *display.Display, slot int, sem chan struct{}, name string) e
 				disp.ErrorRemote(slot, j, fmt.Sprintf("%s :: error", pname))
 				disp.ErrorOutput(slot, j, err.Error())
 				mu.Lock()
-				errs = append(errs, fmt.Sprintf("%s/%s", pname, err))
+				errs = append(errs, remoteErr{pname, err.Error()})
 				mu.Unlock()
 			} else {
 				disp.Remote(slot, j, fmt.Sprintf("%s :: done", pname))
@@ -207,10 +212,7 @@ func syncRepo(disp *display.Display, slot int, sem chan struct{}, name string) e
 	}
 	wg.Wait()
 
-	if len(errs) > 0 {
-		return fmt.Errorf("%s", strings.Join(errs, "\n"))
-	}
-	return nil
+	return errs
 }
 
 // includes archived repos (unlike selectTargets which uses ctxs)
@@ -263,8 +265,13 @@ func runSync() error {
 	}
 	sem := make(chan struct{}, mc)
 
+	type repoRemoteErr struct {
+		repo   string
+		remote string
+		msg    string
+	}
 	var (
-		errs  []struct{ repo, msg string }
+		errs  []repoRemoteErr
 		errMu sync.Mutex
 		wg    sync.WaitGroup
 	)
@@ -277,9 +284,9 @@ func runSync() error {
 			defer func() { pool <- slot }()
 			disp.Clear(slot)
 
-			if err := syncRepo(disp, slot, sem, name); err != nil {
+			for _, re := range syncRepo(disp, slot, sem, name) {
 				errMu.Lock()
-				errs = append(errs, struct{ repo, msg string }{name, err.Error()})
+				errs = append(errs, repoRemoteErr{name, re.remote, re.msg})
 				errMu.Unlock()
 			}
 		}(name)
@@ -289,8 +296,11 @@ func runSync() error {
 
 	if len(errs) > 0 {
 		fmt.Fprintln(os.Stderr)
+		style := display.DefaultTheme.Error
+		fmt.Fprintln(os.Stderr, style.Render("error:"))
 		for _, e := range errs {
-			errorf("%s :: %s", e.repo, e.msg)
+			fmt.Fprintln(os.Stderr, style.Render(fmt.Sprintf("  %s :: %s", e.repo, e.remote)))
+			fmt.Fprintln(os.Stderr, style.Render(fmt.Sprintf("    %s", e.msg)))
 		}
 		return fmt.Errorf("%d repo(s) failed to sync", len(errs))
 	}
