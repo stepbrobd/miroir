@@ -131,8 +131,11 @@ func runOn(op git.Op, force bool, extra []string) error {
 
 	if len(errs) > 0 {
 		fmt.Fprintln(os.Stderr)
+		style := display.DefaultTheme.Error
+		fmt.Fprintln(os.Stderr, style.Render("error:"))
 		for _, e := range errs {
-			errorf("%s :: %s", e.repo, e.msg)
+			fmt.Fprintln(os.Stderr, style.Render(fmt.Sprintf("  %s", e.repo)))
+			fmt.Fprintln(os.Stderr, style.Render(fmt.Sprintf("    %s", e.msg)))
 		}
 		return fmt.Errorf("%d operation(s) failed", len(errs))
 	}
