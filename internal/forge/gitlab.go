@@ -12,8 +12,8 @@ type glForge struct {
 	c *gl.Client
 }
 
-func newGitlab(token string) (*glForge, error) {
-	c, err := gl.NewClient(token)
+func newGitlab(token, domain string) (*glForge, error) {
+	c, err := gl.NewClient(token, gl.WithBaseURL("https://"+domain))
 	if err != nil {
 		return nil, fmt.Errorf("gitlab client: %w", err)
 	}

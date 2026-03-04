@@ -100,13 +100,14 @@ func (g *srhtForge) repoID(ctx context.Context, name string) (int, error) {
 	return q.Me.Repository.ID, nil
 }
 
-type repoInput struct {
-	Name        string  `json:"name"`
+// omits Name to avoid spurious "already exists" from the uniqueness
+// check (updates are identified by id, not name)
+type repoUpdateInput struct {
 	Description string  `json:"description"`
 	Visibility  srhtVis `json:"visibility"`
 }
 
-func (repoInput) GetGraphQLType() string { return "RepoInput" }
+func (repoUpdateInput) GetGraphQLType() string { return "RepoInput" }
 
 func (g *srhtForge) Update(ctx context.Context, _ string, m Meta) error {
 	id, err := g.repoID(ctx, m.Name)
@@ -120,8 +121,7 @@ func (g *srhtForge) Update(ctx context.Context, _ string, m Meta) error {
 	}
 	vars := map[string]any{
 		"id": graphql.Int(id),
-		"input": repoInput{
-			Name:        m.Name,
+		"input": repoUpdateInput{
 			Description: descOrEmpty(m.Desc),
 			Visibility:  srhtVisOf(m.Vis),
 		},

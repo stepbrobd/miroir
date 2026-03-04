@@ -26,12 +26,12 @@ type Forge interface {
 
 var ErrExists = errors.New("already exists")
 
-func Dispatch(f config.Forge, token string) (Forge, error) {
+func Dispatch(f config.Forge, token, domain string) (Forge, error) {
 	switch f {
 	case config.Github:
 		return newGithub(token), nil
 	case config.Gitlab:
-		return newGitlab(token)
+		return newGitlab(token, domain)
 	case config.Codeberg:
 		return newCodeberg(token)
 	case config.Sourcehut:

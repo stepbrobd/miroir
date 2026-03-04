@@ -8,7 +8,7 @@ import (
 )
 
 func TestDispatchGithub(t *testing.T) {
-	f, err := Dispatch(config.Github, "dummy")
+	f, err := Dispatch(config.Github, "dummy", "github.com")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -18,7 +18,7 @@ func TestDispatchGithub(t *testing.T) {
 }
 
 func TestDispatchSourcehut(t *testing.T) {
-	f, err := Dispatch(config.Sourcehut, "dummy")
+	f, err := Dispatch(config.Sourcehut, "dummy", "git.sr.ht")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -28,7 +28,7 @@ func TestDispatchSourcehut(t *testing.T) {
 }
 
 func TestDispatchUnknown(t *testing.T) {
-	_, err := Dispatch(config.Forge(99), "dummy")
+	_, err := Dispatch(config.Forge(99), "dummy", "example.com")
 	if err == nil {
 		t.Error("expected error for unknown forge")
 	}

@@ -175,7 +175,7 @@ func syncRepo(disp *display.Display, slot int, sem chan struct{}, name string) e
 			}
 
 			disp.Remote(slot, j, fmt.Sprintf("%s :: syncing...", pname))
-			impl, err := forge.Dispatch(*f, *t)
+			impl, err := forge.Dispatch(*f, *t, p.Domain)
 			if err != nil {
 				disp.ErrorRemote(slot, j, fmt.Sprintf("%s :: error", pname))
 				disp.ErrorOutput(slot, j, err.Error())
