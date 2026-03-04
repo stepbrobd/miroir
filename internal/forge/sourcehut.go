@@ -2,7 +2,7 @@ package forge
 
 import (
 	"context"
-	"fmt"
+	"errors"
 	"net/http"
 	"strings"
 
@@ -95,7 +95,7 @@ func (g *srhtForge) repoID(ctx context.Context, name string) (int, error) {
 		return 0, err
 	}
 	if q.Me.Repository.ID == 0 {
-		return 0, fmt.Errorf("sourcehut: could not find repository id")
+		return 0, errors.New("sourcehut: could not find repository id")
 	}
 	return q.Me.Repository.ID, nil
 }
@@ -130,7 +130,7 @@ func (g *srhtForge) Update(ctx context.Context, _ string, m Meta) error {
 }
 
 func (g *srhtForge) Archive(_ context.Context, _, _ string, _ bool) error {
-	return fmt.Errorf("sourcehut does not support archive via api")
+	return errors.New("sourcehut does not support archive via api")
 }
 
 func (g *srhtForge) Delete(ctx context.Context, _ string, name string) error {

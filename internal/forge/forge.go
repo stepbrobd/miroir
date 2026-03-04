@@ -15,7 +15,6 @@ type Meta struct {
 	Archived bool
 }
 
-// all methods accept context for timeout/cancellation propagation
 type Forge interface {
 	Create(ctx context.Context, user string, m Meta) error
 	Update(ctx context.Context, user string, m Meta) error
