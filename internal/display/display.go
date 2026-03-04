@@ -81,17 +81,15 @@ func (m model) View() string {
 	return b.String()
 }
 
-// Display manages terminal output for concurrent repo operations
 type Display struct {
 	tty  bool
 	prog *tea.Program
 	done chan error
 	log  *log.Logger
-	mu   sync.Mutex // protects logger writes in non-tty mode
+	mu   sync.Mutex // guards log writes in non-TTY mode
 }
 
-// New creates a display; uses bubbletea when stdout is a TTY,
-// charm log otherwise
+// bubbletea when stdout is a TTY, charm log otherwise
 func New(repos, remotes int, th Theme) *Display {
 	tty := term.IsTerminal(int(os.Stdout.Fd()))
 	d := &Display{tty: tty, done: make(chan error, 1)}
@@ -115,7 +113,6 @@ func New(repos, remotes int, th Theme) *Display {
 	return d
 }
 
-// Repo sets the repo header line for slot r
 func (d *Display) Repo(slot int, msg string) {
 	if d.tty {
 		d.prog.Send(repoMsg{slot, msg})
@@ -126,7 +123,6 @@ func (d *Display) Repo(slot int, msg string) {
 	}
 }
 
-// Remote sets the remote info line for slot r, remote j
 func (d *Display) Remote(slot, j int, msg string) {
 	if d.tty {
 		d.prog.Send(remoteMsg{slot, j, msg})
@@ -137,7 +133,6 @@ func (d *Display) Remote(slot, j int, msg string) {
 	}
 }
 
-// Output sets the remote output line for slot r, remote j
 func (d *Display) Output(slot, j int, msg string) {
 	if d.tty {
 		d.prog.Send(outputMsg{slot, j, msg})
@@ -148,14 +143,12 @@ func (d *Display) Output(slot, j int, msg string) {
 	}
 }
 
-// Clear resets all lines for slot r (for slot reuse)
 func (d *Display) Clear(slot int) {
 	if d.tty {
 		d.prog.Send(clearMsg{slot})
 	}
 }
 
-// Finish signals bubbletea to quit and waits for completion
 func (d *Display) Finish() {
 	if d.tty {
 		d.prog.Send(finishMsg{})

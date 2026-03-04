@@ -58,7 +58,6 @@ func TestConfigPathEnv(t *testing.T) {
 	}
 }
 
-// flag takes precedence over env
 func TestConfigPathFlagOverEnv(t *testing.T) {
 	setConfigFlag(t, "/flag.toml")
 	t.Setenv("MIROIR_CONFIG", "/env.toml")
@@ -171,7 +170,7 @@ func TestSelectTargetsByCwd(t *testing.T) {
 	nameFlag = ""
 	allFlag = false
 
-	// resolve symlinks so cwd matches map keys on macOS
+	// macOS /var -> /private/var symlink must be resolved for path matching
 	tmp, err := filepath.EvalSymlinks(t.TempDir())
 	if err != nil {
 		t.Fatal(err)

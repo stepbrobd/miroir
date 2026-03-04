@@ -48,7 +48,6 @@ func TestIsDirty(t *testing.T) {
 		t.Skip("git not available")
 	}
 	dir := t.TempDir()
-	// init a clean repo
 	if err := run(dir, nil, true, nil, "init"); err != nil {
 		t.Fatal(err)
 	}

@@ -142,7 +142,7 @@ type Config struct {
 	Repo     map[string]Repo     `toml:"repo"`
 }
 
-// ForgeOfDomain auto-detects forge type from domain name
+// nil if domain is not a known forge
 func ForgeOfDomain(domain string) *Forge {
 	d := strings.ToLower(domain)
 	var f Forge
@@ -161,7 +161,7 @@ func ForgeOfDomain(domain string) *Forge {
 	return &f
 }
 
-// ResolveForge returns the effective forge: explicit field > auto-detect
+// explicit field takes precedence over domain auto-detect
 func ResolveForge(p Platform) *Forge {
 	if p.Forge != nil {
 		return p.Forge
@@ -169,7 +169,7 @@ func ResolveForge(p Platform) *Forge {
 	return ForgeOfDomain(p.Domain)
 }
 
-// ResolveToken returns the effective token: env var MIROIR_<NAME>_TOKEN > config field
+// MIROIR_<NAME>_TOKEN env takes precedence over config field
 func ResolveToken(name string, p Platform) *string {
 	v := "MIROIR_" + strings.ToUpper(name) + "_TOKEN"
 	if t, ok := os.LookupEnv(v); ok {
@@ -178,7 +178,6 @@ func ResolveToken(name string, p Platform) *string {
 	return p.Token
 }
 
-// Load parses a TOML config file, applying defaults
 func Load(path string) (*Config, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -187,7 +186,6 @@ func Load(path string) (*Config, error) {
 	return Parse(string(data))
 }
 
-// Parse parses a TOML string into a Config, applying defaults
 func Parse(s string) (*Config, error) {
 	cfg := &Config{
 		General: General{

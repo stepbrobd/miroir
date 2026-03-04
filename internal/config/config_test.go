@@ -194,7 +194,6 @@ func TestForgeOfDomain(t *testing.T) {
 func TestResolveForge(t *testing.T) {
 	gh := Github
 	p := Platform{Domain: "gitlab.com", Forge: &gh}
-	// explicit forge takes precedence over domain
 	f := ResolveForge(p)
 	if f == nil || *f != Github {
 		t.Errorf("explicit forge: got %v, want Github", f)
@@ -211,13 +210,11 @@ func TestResolveToken(t *testing.T) {
 	tok := "config-token"
 	p := Platform{Token: &tok}
 
-	// config token used when env not set
 	got := ResolveToken("github", p)
 	if got == nil || *got != "config-token" {
 		t.Errorf("config token: got %v", got)
 	}
 
-	// env var takes precedence
 	os.Setenv("MIROIR_GITHUB_TOKEN", "env-token")
 	defer os.Unsetenv("MIROIR_GITHUB_TOKEN")
 	got = ResolveToken("github", p)

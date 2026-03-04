@@ -12,7 +12,6 @@ import (
 	"ysun.co/miroir/internal/context"
 )
 
-// Available checks if git is in PATH
 func Available() error {
 	_, err := exec.LookPath("git")
 	if err != nil {
@@ -21,8 +20,7 @@ func Available() error {
 	return nil
 }
 
-// run executes a git command, routing combined stdout/stderr
-// through onOutput; if silent, output is discarded
+// stdout and stderr are merged and delivered line-by-line via onOutput
 func run(dir string, env []string, silent bool, onOutput func(string), args ...string) error {
 	cmd := exec.Command("git", args...)
 	cmd.Dir = dir

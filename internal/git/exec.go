@@ -7,8 +7,7 @@ import (
 	"strings"
 )
 
-// Exec runs an arbitrary command in the repo directory;
-// remotes = 0: no display, runs sequentially with direct stdout
+// runs sequentially with direct stdout; remotes = 0
 type Exec struct{}
 
 func (Exec) Remotes(_ int) int { return 0 }
