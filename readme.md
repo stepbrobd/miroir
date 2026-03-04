@@ -3,6 +3,12 @@
 Declarative git repo manager. Synchronize multiple remotes, execute commands
 across repos, and manage forge metadata from a single TOML config.
 
+Note that the repo from the beginning up until
+`cabbdc468d421abd25f9869ef36967039903c38f` were in OCaml and since then I asked
+LLMs to rewrite everything in Go as I found `cmdliner`, `eio` and how console
+outputs are managed to be a bit too combersome to iterate effectively (most
+likely my own skill issue).
+
 ## Config
 
 Miroir looks for config in this order:
