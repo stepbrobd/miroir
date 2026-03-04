@@ -118,9 +118,13 @@ type Display struct {
 	mu   sync.Mutex // guards log writes in non-TTY mode
 }
 
-// bubbletea when stdout is a TTY, charm log otherwise
-func New(repos, remotes int, th Theme) *Display {
+// bubbletea when stdout is a TTY, charm log otherwise.
+// ttyOverride forces the mode when non-nil.
+func New(repos, remotes int, th Theme, ttyOverride *bool) *Display {
 	tty := term.IsTerminal(int(os.Stdout.Fd()))
+	if ttyOverride != nil {
+		tty = *ttyOverride
+	}
 	d := &Display{tty: tty, done: make(chan error, 1)}
 
 	if tty {

@@ -75,7 +75,7 @@ func runOn(op git.Op, force bool, extra []string) error {
 	}
 
 	if nr == 0 {
-		disp := display.New(1, 0, display.DefaultTheme)
+		disp := display.New(1, 0, display.DefaultTheme, ttyOverride())
 		sem := make(chan struct{}, 1)
 		for _, target := range targets {
 			err := op.Run(git.Params{
@@ -98,7 +98,7 @@ func runOn(op git.Op, force bool, extra []string) error {
 			mc = min(rcRemote, nr)
 		}
 
-		disp := display.New(rc, nr, display.DefaultTheme)
+		disp := display.New(rc, nr, display.DefaultTheme, ttyOverride())
 		pool := make(chan int, rc)
 		for i := range rc {
 			pool <- i
@@ -208,7 +208,7 @@ func syncRepo(disp *display.Display, slot int, sem chan struct{}, name string) e
 	wg.Wait()
 
 	if len(errs) > 0 {
-		return fmt.Errorf("%s", strings.Join(errs, "; "))
+		return fmt.Errorf("%s", strings.Join(errs, "\n"))
 	}
 	return nil
 }
@@ -256,7 +256,7 @@ func runSync() error {
 		mc = min(rcRemote, nremotes)
 	}
 
-	disp := display.New(rc, nremotes, display.DefaultTheme)
+	disp := display.New(rc, nremotes, display.DefaultTheme, ttyOverride())
 	pool := make(chan int, rc)
 	for i := range rc {
 		pool <- i

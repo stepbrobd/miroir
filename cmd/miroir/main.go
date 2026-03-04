@@ -24,6 +24,8 @@ var (
 	nameFlag  string
 	allFlag   bool
 	forceFlag bool
+	ttyFlag   bool
+	noTTYFlag bool
 
 	// set by resolveTargets; must be populated before subcommand RunE
 	targets []string
@@ -46,6 +48,9 @@ func init() {
 	f.StringVarP(&nameFlag, "name", "n", "", "target repo by name")
 	f.BoolVarP(&allFlag, "all", "a", false, "target all repos")
 	f.BoolVarP(&forceFlag, "force", "f", false, "force operation")
+	f.BoolVar(&ttyFlag, "tty", false, "force TTY output")
+	f.BoolVar(&noTTYFlag, "no-tty", false, "force plain output")
+	root.MarkFlagsMutuallyExclusive("tty", "no-tty")
 }
 
 // priority: --config flag > MIROIR_CONFIG env > XDG config dirs
@@ -114,6 +119,17 @@ func selectTargets() ([]string, error) {
 		}
 	}
 	return nil, fmt.Errorf("not a managed repository (cwd: %s)", cwd)
+}
+
+func ttyOverride() *bool {
+	if ttyFlag {
+		return &ttyFlag
+	}
+	if noTTYFlag {
+		v := false
+		return &v
+	}
+	return nil
 }
 
 func errorf(format string, v ...any) {
