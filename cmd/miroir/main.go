@@ -10,6 +10,7 @@ import (
 
 	"github.com/adrg/xdg"
 	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
 
 	"ysun.co/miroir/internal/config"
 	"ysun.co/miroir/internal/context"
@@ -48,12 +49,15 @@ func init() {
 
 // priority: --config flag > MIROIR_CONFIG env > XDG config dirs
 func configPath() (string, error) {
-	if f := root.PersistentFlags().Lookup("config"); f.Changed {
-		return f.Value.String(), nil
-	}
-	if p := os.Getenv("MIROIR_CONFIG"); p != "" {
+	v := viper.New()
+	v.SetEnvPrefix("MIROIR")
+	v.BindEnv("config")
+	v.BindPFlag("config", root.PersistentFlags().Lookup("config"))
+
+	if p := v.GetString("config"); p != "" {
 		return p, nil
 	}
+
 	return xdg.SearchConfigFile(filepath.Join("miroir", "config.toml"))
 }
 
