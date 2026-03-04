@@ -6,7 +6,7 @@ import (
 	"strings"
 	"sync"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/log"
 	"golang.org/x/term"
 )
@@ -70,7 +70,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m model) View() string {
+func (m model) View() tea.View {
 	var b strings.Builder
 	for i, l := range m.lines {
 		b.WriteString(l)
@@ -78,7 +78,7 @@ func (m model) View() string {
 			b.WriteByte('\n')
 		}
 	}
-	return b.String()
+	return tea.NewView(b.String())
 }
 
 type Display struct {

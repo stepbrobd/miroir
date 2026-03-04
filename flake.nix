@@ -12,8 +12,11 @@
       });
 
       packages.default =
-        let version = lib.fileContents ./version.txt;
-        in pkgs.buildGoApplication {
+        let
+          version = lib.fileContents ./version.txt;
+        in
+        pkgs.buildGoApplication {
+          meta.mainProgram = "miroir";
           pname = "miroir";
           inherit version;
           src = ./.;

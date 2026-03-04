@@ -4,7 +4,7 @@ import (
 	"context"
 	"net/http"
 
-	gh "github.com/google/go-github/v69/github"
+	gh "github.com/google/go-github/v84/github"
 	"ysun.co/miroir/internal/config"
 )
 

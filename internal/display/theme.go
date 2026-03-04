@@ -1,6 +1,6 @@
 package display
 
-import "github.com/charmbracelet/lipgloss"
+import "charm.land/lipgloss/v2"
 
 type Theme struct {
 	Repo   lipgloss.Style
