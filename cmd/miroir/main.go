@@ -24,7 +24,7 @@ var (
 	allFlag   bool
 	forceFlag bool
 
-	// populated by resolveTargets before any subcommand runs
+	// set by resolveTargets; must be populated before subcommand RunE
 	targets []string
 	ctxs    map[string]*context.Context
 	cfg     *config.Config
@@ -47,7 +47,7 @@ func init() {
 	f.BoolVarP(&forceFlag, "force", "f", false, "force operation")
 }
 
-// viper resolves flag > env (MIROIR_CONFIG); xdg searches config dirs
+// priority: --config flag > MIROIR_CONFIG env > XDG config dirs
 func configPath() (string, error) {
 	v := viper.New()
 	v.SetEnvPrefix("MIROIR")
@@ -61,7 +61,7 @@ func configPath() (string, error) {
 	return xdg.SearchConfigFile(filepath.Join("miroir", "config.toml"))
 }
 
-// used as PersistentPreRunE for subcommands that need targets
+// PersistentPreRunE for subcommands that need targets
 func resolveTargets(cmd *cobra.Command, args []string) error {
 	if err := git.Available(); err != nil {
 		return err
@@ -76,14 +76,20 @@ func resolveTargets(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	ctxs = context.MakeAll(cfg)
+	ctxs, err = context.MakeAll(cfg)
+	if err != nil {
+		return err
+	}
 
 	targets, err = selectTargets()
 	return err
 }
 
 func selectTargets() ([]string, error) {
-	home := context.ExpandHome(cfg.General.Home)
+	home, err := context.ExpandHome(cfg.General.Home)
+	if err != nil {
+		return nil, err
+	}
 
 	if nameFlag != "" {
 		path := filepath.Join(home, nameFlag)

@@ -2,9 +2,10 @@ package context
 
 import (
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
-	"sort"
+	"slices"
 	"strings"
 
 	"ysun.co/miroir/internal/config"
@@ -18,8 +19,8 @@ type Remote struct {
 type Context struct {
 	Env    []string
 	Branch string
-	Fetch  []Remote // platforms with origin = true
-	Push   []Remote // all platforms
+	Fetch  []Remote
+	Push   []Remote
 }
 
 func MakeURI(access config.Access, domain, user, repo string) string {
@@ -37,42 +38,38 @@ func MakeURI(access config.Access, domain, user, repo string) string {
 	}
 }
 
-// ExpandHome expands ~/ prefix to $HOME
-func ExpandHome(path string) string {
-	home := func() string {
-		h, ok := os.LookupEnv("HOME")
-		if !ok {
-			fmt.Fprintf(os.Stderr, "fatal: $HOME is not set\n")
-			os.Exit(1)
-		}
-		return h
+// returns $HOME; error if unset
+func home() (string, error) {
+	h, ok := os.LookupEnv("HOME")
+	if !ok {
+		return "", fmt.Errorf("$HOME is not set")
 	}
+	return h, nil
+}
+
+// expands leading ~/ to $HOME
+func ExpandHome(path string) (string, error) {
 	if path == "~" {
 		return home()
 	}
 	if strings.HasPrefix(path, "~/") {
-		return home() + path[1:]
+		h, err := home()
+		if err != nil {
+			return "", err
+		}
+		return h + path[1:], nil
 	}
-	return path
+	return path, nil
 }
 
-func sortedPlatforms(m map[string]config.Platform) []string {
-	keys := make([]string, 0, len(m))
-	for k := range m {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-	return keys
-}
-
-func make_(env []string, platforms map[string]config.Platform, repo, branch string) *Context {
-	// merge process env with config env
+// at most one platform may have origin = true per repo
+func make_(env []string, platforms map[string]config.Platform, repo, branch string) (*Context, error) {
 	base := os.Environ()
 	merged := make([]string, 0, len(base)+len(env))
 	merged = append(merged, base...)
 	merged = append(merged, env...)
 
-	names := sortedPlatforms(platforms)
+	names := slices.Sorted(maps.Keys(platforms))
 
 	var fetch []Remote
 	for _, n := range names {
@@ -84,14 +81,11 @@ func make_(env []string, platforms map[string]config.Platform, repo, branch stri
 			})
 		}
 	}
-	switch len(fetch) {
-	case 0:
+	if len(fetch) > 1 {
+		return nil, fmt.Errorf("repo %q: multiple platforms have origin = true", repo)
+	}
+	if len(fetch) == 0 {
 		fmt.Fprintf(os.Stderr, "warning: no platform has origin = true for %s\n", repo)
-	case 1:
-		// ok
-	default:
-		fmt.Fprintf(os.Stderr, "fatal: multiple platforms have origin = true\n")
-		os.Exit(1)
 	}
 
 	var push []Remote
@@ -103,7 +97,7 @@ func make_(env []string, platforms map[string]config.Platform, repo, branch stri
 		})
 	}
 
-	return &Context{Env: merged, Branch: branch, Fetch: fetch, Push: push}
+	return &Context{Env: merged, Branch: branch, Fetch: fetch, Push: push}, nil
 }
 
 func envSlice(m map[string]string) []string {
@@ -114,21 +108,27 @@ func envSlice(m map[string]string) []string {
 	return s
 }
 
-// MakeAll builds (path, context) pairs for all non-archived repos
-func MakeAll(cfg *config.Config) map[string]*Context {
-	home := ExpandHome(cfg.General.Home)
+func MakeAll(cfg *config.Config) (map[string]*Context, error) {
+	h, err := ExpandHome(cfg.General.Home)
+	if err != nil {
+		return nil, err
+	}
 	env := envSlice(cfg.General.Env)
 	ctxs := make(map[string]*Context)
 	for name, repo := range cfg.Repo {
 		if repo.Archived {
 			continue
 		}
-		path := filepath.Join(home, name)
+		path := filepath.Join(h, name)
 		branch := cfg.General.Branch
 		if repo.Branch != nil {
 			branch = *repo.Branch
 		}
-		ctxs[path] = make_(env, cfg.Platform, name, branch)
+		ctx, err := make_(env, cfg.Platform, name, branch)
+		if err != nil {
+			return nil, err
+		}
+		ctxs[path] = ctx
 	}
-	return ctxs
+	return ctxs, nil
 }

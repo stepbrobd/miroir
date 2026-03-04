@@ -1,6 +1,7 @@
 package context
 
 import (
+	"os"
 	"testing"
 
 	"ysun.co/miroir/internal/config"
@@ -37,10 +38,22 @@ func TestExpandHome(t *testing.T) {
 		{"relative", "relative"},
 	}
 	for _, tt := range tests {
-		got := ExpandHome(tt.in)
+		got, err := ExpandHome(tt.in)
+		if err != nil {
+			t.Fatalf("ExpandHome(%q): %v", tt.in, err)
+		}
 		if got != tt.want {
 			t.Errorf("ExpandHome(%q) = %q, want %q", tt.in, got, tt.want)
 		}
+	}
+}
+
+func TestExpandHomeNoHOME(t *testing.T) {
+	t.Setenv("HOME", "")
+	os.Unsetenv("HOME")
+	_, err := ExpandHome("~/test")
+	if err == nil {
+		t.Fatal("expected error when $HOME is unset")
 	}
 }
 
@@ -71,14 +84,15 @@ func TestMakeAll(t *testing.T) {
 		},
 	}
 
-	ctxs := MakeAll(cfg)
+	ctxs, err := MakeAll(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
 
-	// archived repo should be excluded
 	if _, ok := ctxs["/home/test/ws/skip"]; ok {
 		t.Error("archived repo should be excluded")
 	}
 
-	// active repo uses general branch
 	active, ok := ctxs["/home/test/ws/active"]
 	if !ok {
 		t.Fatal("active repo not found")
@@ -87,7 +101,6 @@ func TestMakeAll(t *testing.T) {
 		t.Errorf("active branch: got %q, want %q", active.Branch, "master")
 	}
 
-	// custom repo uses per-repo branch
 	custom, ok := ctxs["/home/test/ws/custom"]
 	if !ok {
 		t.Fatal("custom repo not found")
@@ -96,7 +109,6 @@ func TestMakeAll(t *testing.T) {
 		t.Errorf("custom branch: got %q, want %q", custom.Branch, "develop")
 	}
 
-	// both should have one fetch remote (origin) and one push remote
 	if len(active.Fetch) != 1 {
 		t.Errorf("active fetch remotes: got %d, want 1", len(active.Fetch))
 	}
@@ -105,8 +117,20 @@ func TestMakeAll(t *testing.T) {
 	}
 }
 
-func TestMakeAllMultiOriginExits(t *testing.T) {
-	// multiple origins should cause a fatal exit;
-	// we can't easily test os.Exit, so skip this as an integration test
-	t.Skip("multiple origin validation requires integration test")
+func TestMakeAllMultiOrigin(t *testing.T) {
+	t.Setenv("HOME", "/home/test")
+	cfg := &config.Config{
+		General: config.General{Home: "/ws", Branch: "master"},
+		Platform: map[string]config.Platform{
+			"a": {Origin: true, Domain: "a.com", Access: config.SSH},
+			"b": {Origin: true, Domain: "b.com", Access: config.SSH},
+		},
+		Repo: map[string]config.Repo{
+			"r": {Visibility: config.Public},
+		},
+	}
+	_, err := MakeAll(cfg)
+	if err == nil {
+		t.Fatal("expected error for multiple origins")
+	}
 }
