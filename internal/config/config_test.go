@@ -1,9 +1,6 @@
 package config
 
-import (
-	"os"
-	"testing"
-)
+import "testing"
 
 func TestDefaults(t *testing.T) {
 	cfg, err := Parse("")
@@ -215,8 +212,7 @@ func TestResolveToken(t *testing.T) {
 		t.Errorf("config token: got %v", got)
 	}
 
-	os.Setenv("MIROIR_GITHUB_TOKEN", "env-token")
-	defer os.Unsetenv("MIROIR_GITHUB_TOKEN")
+	t.Setenv("MIROIR_GITHUB_TOKEN", "env-token")
 	got = ResolveToken("github", p)
 	if got == nil || *got != "env-token" {
 		t.Errorf("env token: got %v", got)
