@@ -53,6 +53,15 @@ func init() {
 		},
 	}
 
+	sweepCmd := &cobra.Command{
+		Use:               "sweep",
+		Short:             "remove archived and untracked repos from workspace",
+		PersistentPreRunE: loadConfig,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runSweep()
+		},
+	}
+
 	root.AddCommand(
 		gitCmd("init", "initialize repo(s)", git.Init{}),
 		gitCmd("fetch", "fetch from all remotes", git.Fetch{}),
@@ -60,6 +69,7 @@ func init() {
 		gitCmd("push", "push to all remotes", git.Push{}),
 		execCmd,
 		syncCmd,
+		sweepCmd,
 	)
 }
 
@@ -306,6 +316,70 @@ func runSync() error {
 			fmt.Fprintln(os.Stderr, style.Render(fmt.Sprintf("    %s", e.msg)))
 		}
 		return fmt.Errorf("%d repo(s) failed to sync", len(errs))
+	}
+	return nil
+}
+
+func runSweep() error {
+	home, err := mirctx.ExpandHome(cfg.General.Home)
+	if err != nil {
+		return err
+	}
+	home = filepath.Clean(home)
+
+	entries, err := os.ReadDir(home)
+	if err != nil {
+		return fmt.Errorf("read workspace dir: %w", err)
+	}
+
+	var removals []string
+	for _, e := range entries {
+		if !e.IsDir() {
+			continue
+		}
+		name := e.Name()
+		repo, inConfig := cfg.Repo[name]
+		if inConfig && !repo.Archived {
+			continue
+		}
+		removals = append(removals, name)
+	}
+
+	if len(removals) == 0 {
+		fmt.Println("nothing to sweep")
+		return nil
+	}
+
+	if !forceFlag {
+		fmt.Println("directories to remove (pass -f to actually delete):")
+		for _, name := range removals {
+			fmt.Printf("  %s\n", filepath.Join(home, name))
+		}
+		return nil
+	}
+
+	var errs []string
+	for _, name := range removals {
+		path := filepath.Join(home, name)
+		clean := filepath.Clean(path)
+		if !strings.HasPrefix(clean, home+string(filepath.Separator)) {
+			errs = append(errs, fmt.Sprintf("%s: path escapes workspace root", name))
+			continue
+		}
+		if err := os.RemoveAll(clean); err != nil {
+			errs = append(errs, fmt.Sprintf("%s: %s", name, err))
+			continue
+		}
+		fmt.Printf("  removed %s\n", clean)
+	}
+
+	if len(errs) > 0 {
+		fmt.Fprintln(os.Stderr)
+		style := display.DefaultTheme.Error
+		for _, e := range errs {
+			fmt.Fprintln(os.Stderr, style.Render(fmt.Sprintf("error: %s", e)))
+		}
+		return fmt.Errorf("%d removal(s) failed", len(errs))
 	}
 	return nil
 }
