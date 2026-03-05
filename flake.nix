@@ -19,7 +19,15 @@
           meta.mainProgram = "miroir";
           pname = "miroir";
           inherit version;
-          src = ./.;
+          src = with lib.fileset; toSource {
+            root = ./.;
+            fileset = unions [
+              ./cmd
+              ./internal
+              ./go.mod
+              ./go.sum
+            ];
+          };
           modules = ./gomod2nix.toml;
           subPackages = [ "cmd/miroir" ];
           ldflags = [ "-X" "main.version=${version}" ];
