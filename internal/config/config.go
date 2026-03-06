@@ -3,9 +3,11 @@ package config
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/BurntSushi/toml"
+	"github.com/adrg/xdg"
 )
 
 type Access int
@@ -136,10 +138,19 @@ type Repo struct {
 	Branch      *string    `toml:"branch,omitempty"`
 }
 
+type Index struct {
+	Listen   string   `toml:"listen"`
+	Database string   `toml:"database"`
+	Interval int      `toml:"interval"`
+	Bare     bool     `toml:"bare"`
+	Include  []string `toml:"include"`
+}
+
 type Config struct {
 	General  General             `toml:"general"`
 	Platform map[string]Platform `toml:"platform"`
 	Repo     map[string]Repo     `toml:"repo"`
+	Index    Index               `toml:"index"`
 }
 
 // nil if domain is not a known forge
@@ -195,6 +206,12 @@ func Parse(s string) (*Config, error) {
 				Repo:   1,
 				Remote: 0,
 			},
+		},
+		Index: Index{
+			Listen:   ":6070",
+			Database: filepath.Join(xdg.DataHome, "miroir", "index"),
+			Interval: 300,
+			Bare:     true,
 		},
 	}
 	if _, err := toml.Decode(s, cfg); err != nil {

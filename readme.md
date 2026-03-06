@@ -1,13 +1,9 @@
 # Miroir
 
-Declarative git repo manager. Synchronize multiple remotes, execute commands
-across repos, and manage forge metadata from a single TOML config.
-
-Note that the repo from the beginning up until
-`cabbdc468d421abd25f9869ef36967039903c38f` were in OCaml and since then I asked
-LLMs to rewrite everything in Go as I found `cmdliner`, `eio` and how console
-outputs are managed to be a bit too combersome to iterate effectively (most
-likely my own skill issue).
+Declarative git repo manager and code search server. Synchronize multiple
+remotes, execute commands across repos, manage forge metadata from a single TOML
+config, and serve full-text code search via
+[zoekt](https://github.com/sourcegraph/zoekt).
 
 ## Config
 
@@ -60,6 +56,15 @@ branch = "main"               # Per-repo branch override
 [repo.old-project]
 visibility = "private"
 archived = true               # Excluded from git ops, archived on forges via sync
+
+[index]
+listen = ":6070"              # HTTP listen address for search API
+database = "/data/miroir/idx" # Zoekt shard storage (default: $XDG_DATA_HOME/miroir/index)
+interval = 300                # Seconds between fetch+index cycles
+bare = true                   # Clone managed repos as bare (default: true)
+include = [                   # Extra directories of repos to index (one level deep)
+  "/var/lib/gitea/repositories/alice",
+]
 ```
 
 ### General
@@ -95,6 +100,21 @@ Tokens can also be set via environment: `MIROIR_<PLATFORM_NAME>_TOKEN` (e.g.
 | `archived`    | `false`   | Skip in git ops; archive on forges via sync |
 | `branch`      |           | Per-repo branch override                    |
 
+### Index
+
+| Field      | Default                       | Description                                   |
+| ---------- | ----------------------------- | --------------------------------------------- |
+| `listen`   | `:6070`                       | HTTP listen address                           |
+| `database` | `$XDG_DATA_HOME/miroir/index` | Directory for zoekt index shards              |
+| `interval` | `300`                         | Seconds between fetch+index cycles            |
+| `bare`     | `true`                        | Clone managed repos as bare repos             |
+| `include`  | `[]`                          | Extra directories to discover repos (1 level) |
+
+The `include` paths are scanned one level deep for both bare and non-bare git
+repos. No git operations (fetch/pull/push) are run on included repos -- they are
+only indexed. This is useful for indexing self-hosted Gitea or GitLab
+repositories directly from their storage directories.
+
 ## Usage
 
 ```
@@ -105,13 +125,13 @@ miroir <command> [flags]
 
 By default, miroir targets the repo matching your current directory.
 
-- `-n, --name <repo>` — Target a specific repo by name
-- `-a, --all` — Target all non-archived repos
-- `-f, --force` — Force operation
+- `-n, --name <repo>` -- Target a specific repo by name
+- `-a, --all` -- Target all non-archived repos
+- `-f, --force` -- Force operation
 
 ### Commands
 
-**init** — Clone and set up repo(s) with all configured remotes
+**init** -- Clone and set up repo(s) with all configured remotes
 
 ```sh
 miroir init                   # Init repo for cwd
@@ -121,13 +141,13 @@ miroir init -a                # Init all repos
 Creates the directory, initializes git, adds all remotes, fetches, resets to
 `origin/<branch>`, and initializes submodules.
 
-**fetch** — Fetch from all remotes (concurrent)
+**fetch** -- Fetch from all remotes (concurrent)
 
 ```sh
 miroir fetch -a
 ```
 
-**pull** — Pull from origin
+**pull** -- Pull from origin
 
 ```sh
 miroir pull                   # Fails if working tree is dirty
@@ -136,14 +156,14 @@ miroir pull -f                # Hard reset then pull
 
 Also updates submodules recursively.
 
-**push** — Push to all remotes (concurrent)
+**push** -- Push to all remotes (concurrent)
 
 ```sh
 miroir push -a
 miroir push -f                # Force push
 ```
 
-**exec** — Run a command in repo(s)
+**exec** -- Run a command in repo(s)
 
 ```sh
 miroir exec -a -- git status
@@ -152,7 +172,7 @@ miroir exec -n myrepo -- make build
 
 Runs sequentially with direct stdout/stderr passthrough.
 
-**sync** — Synchronize repo metadata to all forges
+**sync** -- Synchronize repo metadata to all forges
 
 ```sh
 miroir sync -a
@@ -162,7 +182,38 @@ Creates repos that don't exist, updates description/visibility on existing ones,
 and archives repos marked `archived = true`. Each forge API call has a 30-second
 timeout.
 
-**completion** — Generate shell completions
+**sweep** -- Remove archived and untracked repos from workspace
+
+```sh
+miroir sweep                  # Dry run
+miroir sweep -f               # Actually delete
+```
+
+**index** -- Start the index daemon (server-side)
+
+```sh
+miroir index
+miroir index -c /path/to/config.toml
+```
+
+Starts a long-running daemon that:
+
+1. Clones/fetches managed repos (from `[repo.*]` config) on a timer
+2. Discovers repos from `[index].include` paths (one level deep, no git ops)
+3. Indexes all repos using zoekt's trigram indexer
+4. Serves the zoekt search API and web UI over HTTP
+
+The searcher hot-reloads index shards -- no restart needed after re-indexing.
+Graceful shutdown on SIGINT/SIGTERM.
+
+Compatible with any zoekt frontend (e.g.
+[neogrok](https://github.com/isker/neogrok)):
+
+```sh
+ZOEKT_URL=http://localhost:6070 neogrok
+```
+
+**completion** -- Generate shell completions
 
 ```sh
 miroir completion bash >> ~/.bashrc
@@ -181,10 +232,10 @@ miroir completion fish > ~/.config/fish/completions/miroir.fish
 
 Forge type is auto-detected from the platform domain:
 
-- `github.com`, `github.*` → GitHub
-- `gitlab.com`, `gitlab.*` → GitLab
-- `codeberg.org` → Codeberg
-- `*.sr.ht`, `sr.ht` → SourceHut
+- `github.com`, `github.*` -- GitHub
+- `gitlab.com`, `gitlab.*` -- GitLab
+- `codeberg.org` -- Codeberg
+- `*.sr.ht`, `sr.ht` -- SourceHut
 
 Set `forge = "..."` explicitly to override.
 
@@ -195,7 +246,7 @@ Miroir runs git operations concurrently at two levels:
 - **Repo-level**: Controlled by `concurrency.repo` (default 1)
 - **Remote-level**: Controlled by `concurrency.remote` (default 0, no limit)
 
-Keep `concurrency.repo` low (2–4) as some forges rate-limit SSH connections.
+Keep `concurrency.repo` low (2-4) as some forges rate-limit SSH connections.
 
 ```toml
 [general.concurrency]
@@ -205,5 +256,6 @@ remote = 0
 
 ## Display
 
-When stdout is a TTY, miroir uses a real-time TUI (bubbletea) showing per-repo
-and per-remote progress. When piped, it falls back to structured log output.
+When stdout is a TTY, miroir uses a real-time TUI showing per-repo and
+per-remote progress. When piped, it falls back to structured log output. The
+`index` command always uses structured logging (no TTY mode).

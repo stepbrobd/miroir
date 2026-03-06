@@ -1,6 +1,9 @@
 package config
 
-import "testing"
+import (
+	"os"
+	"testing"
+)
 
 func TestDefaults(t *testing.T) {
 	cfg, err := Parse("")
@@ -204,6 +207,13 @@ func TestResolveForge(t *testing.T) {
 }
 
 func TestResolveToken(t *testing.T) {
+	// clear env so LookupEnv does not find it; t.Setenv restores on cleanup
+	orig, had := os.LookupEnv("MIROIR_GITHUB_TOKEN")
+	os.Unsetenv("MIROIR_GITHUB_TOKEN")
+	if had {
+		t.Cleanup(func() { os.Setenv("MIROIR_GITHUB_TOKEN", orig) })
+	}
+
 	tok := "config-token"
 	p := Platform{Token: &tok}
 
@@ -216,6 +226,60 @@ func TestResolveToken(t *testing.T) {
 	got = ResolveToken("github", p)
 	if got == nil || *got != "env-token" {
 		t.Errorf("env token: got %v", got)
+	}
+}
+
+func TestIndexDefaults(t *testing.T) {
+	cfg, err := Parse("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ix := cfg.Index
+	if ix.Listen != ":6070" {
+		t.Errorf("listen: got %q, want %q", ix.Listen, ":6070")
+	}
+	if ix.Database == "" {
+		t.Error("database: want non-empty xdg default")
+	}
+	if ix.Interval != 300 {
+		t.Errorf("interval: got %d, want 300", ix.Interval)
+	}
+	if !ix.Bare {
+		t.Error("bare: want true")
+	}
+	if len(ix.Include) != 0 {
+		t.Errorf("include: got %v, want empty", ix.Include)
+	}
+}
+
+func TestIndexConfig(t *testing.T) {
+	s := `
+[index]
+listen = ":8080"
+database = "/tmp/idx"
+interval = 60
+bare = false
+include = ["/var/lib/gitea/repos", "/opt/gitlab/repos"]
+`
+	cfg, err := Parse(s)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ix := cfg.Index
+	if ix.Listen != ":8080" {
+		t.Errorf("listen: got %q", ix.Listen)
+	}
+	if ix.Database != "/tmp/idx" {
+		t.Errorf("database: got %q", ix.Database)
+	}
+	if ix.Interval != 60 {
+		t.Errorf("interval: got %d", ix.Interval)
+	}
+	if ix.Bare {
+		t.Error("bare: want false")
+	}
+	if len(ix.Include) != 2 {
+		t.Errorf("include: got %v", ix.Include)
 	}
 }
 

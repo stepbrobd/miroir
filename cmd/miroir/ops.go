@@ -5,10 +5,12 @@ import (
 	"fmt"
 	"maps"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"slices"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -18,6 +20,7 @@ import (
 	"ysun.co/miroir/internal/display"
 	"ysun.co/miroir/internal/forge"
 	"ysun.co/miroir/internal/git"
+	"ysun.co/miroir/internal/index"
 )
 
 const syncTimeout = 30 * time.Second
@@ -62,6 +65,15 @@ func init() {
 		},
 	}
 
+	indexCmd := &cobra.Command{
+		Use:               "index",
+		Short:             "start index daemon (fetch, index, serve)",
+		PersistentPreRunE: loadConfig,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runIndex()
+		},
+	}
+
 	root.AddCommand(
 		gitCmd("init", "initialize repo(s)", git.Init{}),
 		gitCmd("fetch", "fetch from all remotes", git.Fetch{}),
@@ -70,6 +82,7 @@ func init() {
 		execCmd,
 		syncCmd,
 		sweepCmd,
+		indexCmd,
 	)
 }
 
@@ -382,4 +395,14 @@ func runSweep() error {
 		return fmt.Errorf("%d removal(s) failed", len(errs))
 	}
 	return nil
+}
+
+func runIndex() error {
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	c, err := index.CfgFrom(cfg)
+	if err != nil {
+		return err
+	}
+	return index.Run(ctx, c)
 }
