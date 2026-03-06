@@ -18,7 +18,7 @@ import (
 	mirctx "ysun.co/miroir/internal/context"
 )
 
-// Cfg holds resolved daemon configuration.
+// Cfg holds resolved daemon configuration
 type Cfg struct {
 	Listen   string
 	Database string // absolute path to shard dir
@@ -31,8 +31,15 @@ type Cfg struct {
 	Repos []Repo
 }
 
-// CfgFrom builds a Cfg from miroir config.
+// CfgFrom builds a Cfg from miroir config
+// also sets process-level environment variables from general.env
+// so that all child processes (git clone/fetch) inherit them
 func CfgFrom(c *config.Config) (*Cfg, error) {
+	for k, v := range c.General.Env {
+		if err := os.Setenv(k, v); err != nil {
+			return nil, fmt.Errorf("setenv %s: %w", k, err)
+		}
+	}
 	home, err := mirctx.ExpandHome(c.General.Home)
 	if err != nil {
 		return nil, err
