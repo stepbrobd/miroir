@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/adrg/xdg"
+	"github.com/charmbracelet/log"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
@@ -139,6 +140,6 @@ func errorf(format string, v ...any) {
 
 func main() {
 	if err := root.Execute(); err != nil {
-		os.Exit(1)
+		log.Fatal(err)
 	}
 }
