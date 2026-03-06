@@ -10,16 +10,16 @@ import (
 	"github.com/charmbracelet/log"
 )
 
-// Repo represents a managed repo to keep updated.
+// Repo represents a managed repo to keep updated
 type Repo struct {
 	Name   string
 	URI    string // origin URI
 	Branch string
 }
 
-// Fetch clones (if missing) or fetches (if present) a managed repo.
-// dir is the parent directory. bare controls clone mode.
-// returns the full path to the repo on disk.
+// Fetch clones (if missing) or fetches (if present) a managed repo
+// dir is the parent directory, bare controls clone mode
+// returns the full path to the repo on disk
 func Fetch(dir string, r Repo, bare bool) (string, error) {
 	var path string
 	if bare {
@@ -49,8 +49,8 @@ func cloneRepo(path string, r Repo, bare bool) error {
 	if err := git(path, args...); err != nil {
 		return err
 	}
-	// bare clones lack a fetch refspec, so git fetch is a no-op by default.
-	// set one so subsequent fetches update local heads.
+	// bare clones lack a fetch refspec, so git fetch is a no-op by default
+	// set one so subsequent fetches update local heads
 	if bare {
 		return git(path, "config", "remote.origin.fetch", "+refs/*:refs/*")
 	}
@@ -62,8 +62,8 @@ func fetchRepo(path string) error {
 	return git(path, "fetch", "origin")
 }
 
-// git runs a git command, logging stderr output through charm log.
-// dir is used as working directory only if it exists (clone creates it).
+// git runs a git command, logging stderr through charm log
+// dir is used as working directory only if it exists (clone creates it)
 func git(dir string, args ...string) error {
 	cmd := exec.Command("git", args...)
 	if info, err := os.Stat(dir); err == nil && info.IsDir() {

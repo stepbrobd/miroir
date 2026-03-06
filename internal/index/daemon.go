@@ -32,9 +32,8 @@ type Cfg struct {
 	Repos []Repo
 }
 
-// CfgFrom builds a Cfg from miroir config
-// also sets process-level environment variables from general.env
-// so that all child processes (git clone/fetch) inherit them
+// CfgFrom builds a Cfg from miroir config and sets general.env
+// on the process so child git commands inherit them
 func CfgFrom(c *config.Config) (*Cfg, error) {
 	for k, v := range c.General.Env {
 		if err := os.Setenv(k, v); err != nil {
@@ -94,8 +93,8 @@ func Run(ctx context.Context, c *Cfg) error {
 		return fmt.Errorf("create database dir: %w", err)
 	}
 
-	// searcher hot-reloads shards via directory watcher
-	searcher, err := search.NewDirectorySearcher(c.Database)
+	// searcher loads shards in background and hot-reloads via directory watcher
+	searcher, err := search.NewDirectorySearcherFast(c.Database)
 	if err != nil {
 		return fmt.Errorf("searcher: %w", err)
 	}
@@ -132,18 +131,21 @@ func Run(ctx context.Context, c *Cfg) error {
 		}
 	}()
 
+	var cycleWg sync.WaitGroup
 	var cycleMu sync.Mutex
-	runCycle := func() {
-		if !cycleMu.TryLock() {
-			log.Info("cycle skipped, previous still running")
-			return
-		}
-		defer cycleMu.Unlock()
-		cycle(c)
+	startCycle := func() {
+		cycleWg.Go(func() {
+			if !cycleMu.TryLock() {
+				log.Info("cycle skipped, previous still running")
+				return
+			}
+			defer cycleMu.Unlock()
+			cycle(c)
+		})
 	}
 
 	// run initial cycle in background so the server is available immediately
-	go runCycle()
+	startCycle()
 
 	ticker := time.NewTicker(c.Interval)
 	defer ticker.Stop()
@@ -152,14 +154,16 @@ func Run(ctx context.Context, c *Cfg) error {
 		select {
 		case <-ctx.Done():
 			log.Info("shutting down")
+			cycleWg.Wait()
 			shut, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			err := httpSrv.Shutdown(shut)
 			cancel()
 			return err
 		case err := <-errCh:
+			cycleWg.Wait()
 			return err
 		case <-ticker.C:
-			runCycle()
+			startCycle()
 		}
 	}
 }
