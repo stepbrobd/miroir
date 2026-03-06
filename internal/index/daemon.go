@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"sync"
 	"time"
 
 	"github.com/charmbracelet/log"
@@ -87,14 +88,11 @@ func CfgFrom(c *config.Config) (*Cfg, error) {
 	}, nil
 }
 
-// Run starts the daemon. blocks until ctx is cancelled.
+// Run starts the daemon, blocks until ctx is cancelled
 func Run(ctx context.Context, c *Cfg) error {
 	if err := os.MkdirAll(c.Database, 0o755); err != nil {
 		return fmt.Errorf("create database dir: %w", err)
 	}
-
-	// initial fetch+index before serving
-	cycle(c)
 
 	// searcher hot-reloads shards via directory watcher
 	searcher, err := search.NewDirectorySearcher(c.Database)
@@ -134,6 +132,19 @@ func Run(ctx context.Context, c *Cfg) error {
 		}
 	}()
 
+	var cycleMu sync.Mutex
+	runCycle := func() {
+		if !cycleMu.TryLock() {
+			log.Info("cycle skipped, previous still running")
+			return
+		}
+		defer cycleMu.Unlock()
+		cycle(c)
+	}
+
+	// run initial cycle in background so the server is available immediately
+	go runCycle()
+
 	ticker := time.NewTicker(c.Interval)
 	defer ticker.Stop()
 
@@ -148,26 +159,29 @@ func Run(ctx context.Context, c *Cfg) error {
 		case err := <-errCh:
 			return err
 		case <-ticker.C:
-			cycle(c)
+			runCycle()
 		}
 	}
 }
 
-// cycle runs one fetch+discover+index pass.
+// cycle runs one fetch+index pass
 func cycle(c *Cfg) {
 	log.Info("cycle start")
 	start := time.Now()
+	var n int
 
-	var paths []string
-
-	// fetch managed repos
+	// fetch and index each managed repo immediately
 	for _, r := range c.Repos {
 		p, err := Fetch(c.Home, r, c.Bare)
 		if err != nil {
 			log.Error("fetch failed", "repo", r.Name, "err", err)
 			continue
 		}
-		paths = append(paths, p)
+		if err := IndexRepo(p, c.Database, nil); err != nil {
+			log.Error("index failed", "repo", r.Name, "err", err)
+			continue
+		}
+		n++
 	}
 
 	// discover include repos (no fetch, index only)
@@ -176,15 +190,15 @@ func cycle(c *Cfg) {
 		if err != nil {
 			log.Error("discover failed", "err", err)
 		} else {
-			paths = append(paths, discovered...)
+			for _, p := range discovered {
+				if err := IndexRepo(p, c.Database, nil); err != nil {
+					log.Error("index failed", "repo", p, "err", err)
+					continue
+				}
+				n++
+			}
 		}
 	}
 
-	// index all
-	for _, p := range paths {
-		if err := IndexRepo(p, c.Database, nil); err != nil {
-			log.Error("index failed", "repo", p, "err", err)
-		}
-	}
-	log.Info("cycle done", "repos", len(paths), "elapsed", time.Since(start).Round(time.Millisecond))
+	log.Info("cycle done", "repos", n, "elapsed", time.Since(start).Round(time.Millisecond))
 }
