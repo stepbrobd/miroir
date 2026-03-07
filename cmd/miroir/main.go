@@ -14,8 +14,8 @@ import (
 	"github.com/spf13/viper"
 
 	"ysun.co/miroir/internal/config"
-	"ysun.co/miroir/internal/context"
 	"ysun.co/miroir/internal/git"
+	"ysun.co/miroir/workspace"
 )
 
 var version = "dev"
@@ -29,7 +29,7 @@ var (
 
 	// set by resolveTargets; must be populated before subcommand RunE
 	targets []string
-	ctxs    map[string]*context.Context
+	ctxs    map[string]*workspace.Context
 	cfg     *config.Config
 )
 
@@ -84,7 +84,7 @@ func resolveTargets(cmd *cobra.Command, args []string) error {
 		return err
 	}
 	var err error
-	ctxs, err = context.MakeAll(cfg)
+	ctxs, err = workspace.MakeAll(cfg)
 	if err != nil {
 		return err
 	}
@@ -141,7 +141,7 @@ func resolveNames(names []string, home string) ([]string, error) {
 }
 
 func selectTargets() ([]string, error) {
-	home, err := context.ExpandHome(cfg.General.Home)
+	home, err := workspace.ExpandHome(cfg.General.Home)
 	if err != nil {
 		return nil, err
 	}

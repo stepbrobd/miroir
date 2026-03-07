@@ -17,11 +17,11 @@ import (
 	"github.com/spf13/cobra"
 
 	"ysun.co/miroir/internal/config"
-	mirctx "ysun.co/miroir/internal/context"
 	"ysun.co/miroir/internal/display"
 	"ysun.co/miroir/internal/forge"
 	"ysun.co/miroir/internal/git"
 	"ysun.co/miroir/internal/index"
+	"ysun.co/miroir/workspace"
 )
 
 const syncTimeout = 30 * time.Second
@@ -262,7 +262,7 @@ func syncRepo(disp *display.Display, slot int, sem chan struct{}, name string) [
 
 // includes archived repos (unlike selectTargets which uses ctxs)
 func syncNames() ([]string, error) {
-	home, err := mirctx.ExpandHome(cfg.General.Home)
+	home, err := workspace.ExpandHome(cfg.General.Home)
 	if err != nil {
 		return nil, err
 	}
@@ -336,7 +336,7 @@ func runSync() error {
 }
 
 func runSweep() error {
-	home, err := mirctx.ExpandHome(cfg.General.Home)
+	home, err := workspace.ExpandHome(cfg.General.Home)
 	if err != nil {
 		return err
 	}

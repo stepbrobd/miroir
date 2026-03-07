@@ -10,7 +10,7 @@ import (
 	"strings"
 	"syscall"
 
-	"ysun.co/miroir/internal/context"
+	"ysun.co/miroir/workspace"
 )
 
 func Available() error {
@@ -82,7 +82,7 @@ func run(dir string, env []string, silent bool, onOutput func(string), args ...s
 	return nil
 }
 
-func remoteIndex(ctx *context.Context, name string) int {
+func remoteIndex(ctx *workspace.Context, name string) int {
 	for i, r := range ctx.Push {
 		if r.Name == name {
 			return i

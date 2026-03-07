@@ -3,7 +3,7 @@ package git
 import (
 	"testing"
 
-	"ysun.co/miroir/internal/context"
+	"ysun.co/miroir/workspace"
 )
 
 func TestAvailable(t *testing.T) {
@@ -13,8 +13,8 @@ func TestAvailable(t *testing.T) {
 }
 
 func TestRemoteIndex(t *testing.T) {
-	ctx := &context.Context{
-		Push: []context.Remote{
+	ctx := &workspace.Context{
+		Push: []workspace.Remote{
 			{Name: "github", URI: "git@github.com:a/b"},
 			{Name: "gitlab", URI: "git@gitlab.com:a/b"},
 		},

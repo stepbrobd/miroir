@@ -8,7 +8,7 @@ import (
 	"github.com/adrg/xdg"
 
 	"ysun.co/miroir/internal/config"
-	"ysun.co/miroir/internal/context"
+	"ysun.co/miroir/workspace"
 )
 
 func setConfigFlag(t *testing.T, val string) {
@@ -108,9 +108,9 @@ func setupTargets(t *testing.T, home string, repos ...string) {
 	cfg = &config.Config{
 		General: config.General{Home: home},
 	}
-	ctxs = make(map[string]*context.Context)
+	ctxs = make(map[string]*workspace.Context)
 	for _, r := range repos {
-		ctxs[filepath.Join(home, r)] = &context.Context{}
+		ctxs[filepath.Join(home, r)] = &workspace.Context{}
 	}
 }
 
@@ -180,7 +180,7 @@ func TestSelectTargetsByCwd(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	ctxs = map[string]*context.Context{dir: {}}
+	ctxs = map[string]*workspace.Context{dir: {}}
 	cfg = &config.Config{General: config.General{Home: filepath.Join(tmp, "ws")}}
 
 	oldDir, _ := os.Getwd()
@@ -215,7 +215,7 @@ func TestSelectTargetsNotManaged(t *testing.T) {
 func TestSelectTargetsRejectsNestedManagedRepo(t *testing.T) {
 	t.Setenv("HOME", "/home/test")
 	cfg = &config.Config{General: config.General{Home: "/home/test/ws"}}
-	ctxs = map[string]*context.Context{
+	ctxs = map[string]*workspace.Context{
 		"/home/test/ws/group/alpha": {},
 	}
 
@@ -228,7 +228,7 @@ func TestSelectTargetsRejectsNestedManagedRepo(t *testing.T) {
 func TestSelectTargetsRejectsManagedRepoOutsideWorkspace(t *testing.T) {
 	t.Setenv("HOME", "/home/test")
 	cfg = &config.Config{General: config.General{Home: "/home/test/ws"}}
-	ctxs = map[string]*context.Context{
+	ctxs = map[string]*workspace.Context{
 		"/home/test/other/alpha": {},
 	}
 

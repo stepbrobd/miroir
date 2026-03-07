@@ -1,8 +1,8 @@
 package git
 
 import (
-	"ysun.co/miroir/internal/context"
 	"ysun.co/miroir/internal/display"
+	"ysun.co/miroir/workspace"
 )
 
 // Remotes returns display lines needed per repo slot:
@@ -14,7 +14,7 @@ type Op interface {
 
 type Params struct {
 	Path  string
-	Ctx   *context.Context
+	Ctx   *workspace.Context
 	Disp  *display.Display
 	Slot  int
 	Sem   chan struct{} // bounds concurrent remote operations

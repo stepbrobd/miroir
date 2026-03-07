@@ -16,7 +16,7 @@ import (
 	"github.com/sourcegraph/zoekt/web"
 
 	"ysun.co/miroir/internal/config"
-	mirctx "ysun.co/miroir/internal/context"
+	"ysun.co/miroir/workspace"
 )
 
 // Cfg holds resolved daemon configuration
@@ -41,11 +41,11 @@ func CfgFrom(c *config.Config) (*Cfg, error) {
 			return nil, fmt.Errorf("setenv %s: %w", k, err)
 		}
 	}
-	home, err := mirctx.ExpandHome(c.General.Home)
+	home, err := workspace.ExpandHome(c.General.Home)
 	if err != nil {
 		return nil, err
 	}
-	db, err := mirctx.ExpandHome(c.Index.Database)
+	db, err := workspace.ExpandHome(c.Index.Database)
 	if err != nil {
 		return nil, fmt.Errorf("expand database path: %w", err)
 	}
@@ -71,7 +71,7 @@ func CfgFrom(c *config.Config) (*Cfg, error) {
 			if !p.Origin {
 				continue
 			}
-			uri := mirctx.MakeURI(p.Access, p.Domain, p.User, name)
+			uri := workspace.MakeURI(p.Access, p.Domain, p.User, name)
 			repos = append(repos, Repo{Name: name, URI: uri, Branch: branch})
 			break
 		}
