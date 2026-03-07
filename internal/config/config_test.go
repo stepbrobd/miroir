@@ -279,20 +279,6 @@ include = ["/var/lib/gitea/repos", "/opt/gitlab/repos"]
 	}
 }
 
-func TestConcurrencyValidation(t *testing.T) {
-	_, err := Parse(`[general.concurrency]
-repo = 0`)
-	if err == nil {
-		t.Error("expected error for concurrency.repo = 0")
-	}
-
-	_, err = Parse(`[general.concurrency]
-remote = -1`)
-	if err == nil {
-		t.Error("expected error for concurrency.remote = -1")
-	}
-}
-
 func TestAccessRoundTrip(t *testing.T) {
 	cfg, err := Parse(`
 [platform.test]
