@@ -2,6 +2,7 @@ package git
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"testing"
 
@@ -19,8 +20,8 @@ func gitEnv() []string {
 func TestExecNoArgs(t *testing.T) {
 	op := Exec{}
 	err := op.Run(Params{Path: t.TempDir(), Ctx: &workspace.Context{Env: os.Environ()}})
-	if err != nil {
-		t.Fatal(err)
+	if err == nil {
+		t.Fatal("expected error when no command is provided")
 	}
 }
 
@@ -37,5 +38,78 @@ func TestPullDirtyWithoutForce(t *testing.T) {
 	err := Pull{}.Run(Params{Path: dir, Ctx: &workspace.Context{Env: gitEnv(), Branch: "main"}, Disp: disp, Sem: make(chan struct{}, 1)})
 	if err == nil {
 		t.Fatal("expected dirty tree error")
+	}
+}
+
+func TestPullForceRemovesUntrackedConflict(t *testing.T) {
+	if err := Available(); err != nil {
+		t.Skip("git not available")
+	}
+
+	tmp := t.TempDir()
+	remote := filepath.Join(tmp, "remote")
+	local := filepath.Join(tmp, "local")
+	env := gitEnv()
+
+	if err := os.MkdirAll(remote, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := run(remote, env, true, nil, "init", "--initial-branch=main"); err != nil {
+		t.Fatal(err)
+	}
+	if err := run(remote, env, true, nil, "commit", "--allow-empty", "-m", "init"); err != nil {
+		t.Fatal(err)
+	}
+	if err := run(tmp, env, true, nil, "clone", remote, local); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := os.WriteFile(filepath.Join(remote, "conflict.txt"), []byte("remote\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := run(remote, env, true, nil, "add", "conflict.txt"); err != nil {
+		t.Fatal(err)
+	}
+	if err := run(remote, env, true, nil, "commit", "-m", "add conflict"); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := os.WriteFile(filepath.Join(local, "conflict.txt"), []byte("local\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	v := false
+	disp := display.New(1, 1, display.DefaultTheme, &v)
+	err := Pull{}.Run(Params{
+		Path: local,
+		Ctx:  &workspace.Context{Env: env, Branch: "main"},
+		Disp: disp,
+		Sem:  make(chan struct{}, 1),
+	})
+	if err == nil {
+		t.Fatal("expected dirty tree error")
+	}
+
+	err = Pull{}.Run(Params{
+		Path:  local,
+		Ctx:   &workspace.Context{Env: env, Branch: "main"},
+		Disp:  disp,
+		Sem:   make(chan struct{}, 1),
+		Force: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	out, err := exec.Command("git", "-C", local, "rev-parse", "HEAD").Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	want, err := exec.Command("git", "-C", remote, "rev-parse", "HEAD").Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(out) != string(want) {
+		t.Fatalf("local head = %s want %s", out, want)
 	}
 }

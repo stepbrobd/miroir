@@ -34,7 +34,7 @@ func init() {
 		Use:               "exec [flags] -- <command> [args...]",
 		Short:             "execute command in repo(s)",
 		PersistentPreRunE: resolveTargets,
-		Args:              cobra.ArbitraryArgs,
+		Args:              cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runOn(git.Exec{}, forceFlag, args)
 		},

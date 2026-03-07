@@ -32,6 +32,12 @@ func (Pull) Run(p Params) error {
 			"reset", "--hard", "HEAD"); err != nil {
 			return err
 		}
+
+		info("cleaning untracked files...")
+		if err := run(p.Path, p.Ctx.Env, true, nil,
+			"clean", "-fd"); err != nil {
+			return err
+		}
 	}
 
 	info("pulling...")

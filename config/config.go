@@ -155,6 +155,12 @@ type Config struct {
 }
 
 func Validate(cfg *Config) error {
+	if cfg.General.Concurrency.Repo <= 0 {
+		return fmt.Errorf("general.concurrency.repo must be positive, got %d", cfg.General.Concurrency.Repo)
+	}
+	if cfg.General.Concurrency.Remote < 0 {
+		return fmt.Errorf("general.concurrency.remote must be non-negative, got %d", cfg.General.Concurrency.Remote)
+	}
 	origins := 0
 	for name, platform := range cfg.Platform {
 		if platform.Origin {

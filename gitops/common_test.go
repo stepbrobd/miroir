@@ -1,6 +1,8 @@
 package git
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 
 	"ysun.co/miroir/workspace"
@@ -53,5 +55,11 @@ func TestIsDirty(t *testing.T) {
 	}
 	if isDirty(dir, nil) {
 		t.Error("fresh repo should not be dirty")
+	}
+	if err := os.WriteFile(filepath.Join(dir, "tmp.txt"), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if !isDirty(dir, nil) {
+		t.Error("repo with untracked files should be dirty")
 	}
 }

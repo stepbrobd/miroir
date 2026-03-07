@@ -1,6 +1,7 @@
 package git
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -16,7 +17,7 @@ func (Exec) Run(p Params) error {
 	name := repoName(p.Path)
 	fmt.Printf("%s :: exec :: %s\n", name, strings.Join(p.Args, " "))
 	if len(p.Args) == 0 {
-		return nil
+		return errors.New("no command provided")
 	}
 	cmd := exec.Command(p.Args[0], p.Args[1:]...)
 	cmd.Dir = p.Path

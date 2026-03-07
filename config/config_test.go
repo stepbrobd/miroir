@@ -42,6 +42,32 @@ domain = "b.com"
 	}
 }
 
+func TestValidateConcurrencyBounds(t *testing.T) {
+	_, err := Parse(`
+[general.concurrency]
+repo = 0
+
+[platform.a]
+origin = true
+domain = "a.com"
+`)
+	if err == nil {
+		t.Fatal("expected repo concurrency validation error")
+	}
+
+	_, err = Parse(`
+[general.concurrency]
+remote = -1
+
+[platform.a]
+origin = true
+domain = "a.com"
+`)
+	if err == nil {
+		t.Fatal("expected remote concurrency validation error")
+	}
+}
+
 func TestSimpleConfig(t *testing.T) {
 	toml := `
 [general]

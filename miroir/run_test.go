@@ -2,6 +2,7 @@ package miroir
 
 import (
 	"errors"
+	"sync"
 	"testing"
 
 	git "ysun.co/miroir/gitops"
@@ -9,20 +10,37 @@ import (
 )
 
 type fakeReporter struct {
+	mu         sync.Mutex
 	repoMsgs   []string
 	errorMsgs  []string
 	clearSlots []int
 	finished   bool
 }
 
-func (f *fakeReporter) Repo(_ int, msg string)         { f.repoMsgs = append(f.repoMsgs, msg) }
-func (f *fakeReporter) Remote(_, _ int, _ string)      {}
-func (f *fakeReporter) Output(_, _ int, _ string)      {}
-func (f *fakeReporter) Error(_ int, msg string)        { f.errorMsgs = append(f.errorMsgs, msg) }
+func (f *fakeReporter) Repo(_ int, msg string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.repoMsgs = append(f.repoMsgs, msg)
+}
+func (f *fakeReporter) Remote(_, _ int, _ string) {}
+func (f *fakeReporter) Output(_, _ int, _ string) {}
+func (f *fakeReporter) Error(_ int, msg string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.errorMsgs = append(f.errorMsgs, msg)
+}
 func (f *fakeReporter) ErrorRemote(_, _ int, _ string) {}
 func (f *fakeReporter) ErrorOutput(_, _ int, _ string) {}
-func (f *fakeReporter) Clear(slot int)                 { f.clearSlots = append(f.clearSlots, slot) }
-func (f *fakeReporter) Finish()                        { f.finished = true }
+func (f *fakeReporter) Clear(slot int) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.clearSlots = append(f.clearSlots, slot)
+}
+func (f *fakeReporter) Finish() {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.finished = true
+}
 
 type fakeOp struct {
 	remotes int

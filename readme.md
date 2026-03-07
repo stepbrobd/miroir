@@ -71,9 +71,9 @@ include = [                   # Extra directories of repos to index (one level d
 
 | Field                | Default  | Description                                                       |
 | -------------------- | -------- | ----------------------------------------------------------------- |
-| `home`               | `~/`     | Base directory containing repos                                   |
+| `home`               | `~/`     | Base directory containing managed repos                           |
 | `branch`             | `master` | Default branch for all repos                                      |
-| `concurrency.repo`   | `1`      | Max concurrent repo operations                                    |
+| `concurrency.repo`   | `1`      | Max concurrent repo operations must be at least `1`               |
 | `concurrency.remote` | `0`      | Max concurrent remote ops per repo (0 = no limit)                 |
 | `env`                |          | Extra environment variables added unless already set in the shell |
 
@@ -192,6 +192,14 @@ timeout.
 miroir sweep                  # Dry run
 miroir sweep -f               # Actually delete
 ```
+
+`sweep` assumes every top-level directory under `general.home` is a managed repo
+directory. It is intended for dedicated miroir workspaces, not mixed folders
+such as a general `~/Workspace`.
+
+`sweep` does not use `--name` or `--all` to narrow its scope. It always scans
+the whole workspace root and removes directories for archived repos plus
+directories not present in `[repo.*]`.
 
 **index** -- Start the index daemon (server-side)
 
