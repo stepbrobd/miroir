@@ -230,8 +230,8 @@ version = 'v0.0.20'
 hash = 'sha256-qhw9hWtU5wnyFyuMbKx+7RB8ckQaFQ8D+8GKPkN3HHQ='
 
 [mod.'github.com/mattn/go-runewidth']
-version = 'v0.0.20'
-hash = 'sha256-Y3qYfCqPt+Ce/MEk8dr6pSdd1ZwO2Nwm5sjLIbw26TY='
+version = 'v0.0.21'
+hash = 'sha256-JU+ZijAu0o+5jzfLC8ytQzxIAKYr5ow3nCjFf0ehpiA='
 
 [mod.'github.com/mschoch/smat']
 version = 'v0.2.0'
@@ -346,8 +346,8 @@ version = 'v1.11.0'
 hash = 'sha256-TyYws/cSPVqYNffFX0gbDml1bD4bBGcysrUWU7mHPIY='
 
 [mod.'go.yaml.in/yaml/v2']
-version = 'v2.4.3'
-hash = 'sha256-WqfrOUQFvfuORgl1yyVOcsEXU/vwWQHkcVWx3vCxvaw='
+version = 'v2.4.4'
+hash = 'sha256-ecT2ZXw7iT+63J4210xA6sMz0fUFXmDzLwZe2FzaNFU='
 
 [mod.'go.yaml.in/yaml/v3']
 version = 'v3.0.4'
