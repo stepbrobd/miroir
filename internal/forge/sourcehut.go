@@ -130,7 +130,7 @@ func (g *srhtForge) Update(ctx context.Context, _ string, m Meta) error {
 }
 
 func (g *srhtForge) Archive(_ context.Context, _, _ string, _ bool) error {
-	return errors.New("sourcehut does not support archive via api")
+	return ErrUnsupported
 }
 
 func (g *srhtForge) Delete(ctx context.Context, _ string, name string) error {
@@ -149,22 +149,34 @@ func (g *srhtForge) Delete(ctx context.Context, _ string, name string) error {
 	return g.c.Mutate(ctx, &mut, vars)
 }
 
+// sourcehut GraphQL cursor-based pagination
 func (g *srhtForge) List(ctx context.Context, _ string) ([]string, error) {
-	var q struct {
-		Me struct {
-			Repositories struct {
-				Results []struct {
-					Name string
-				}
+	type cursor struct {
+		Results []struct {
+			Name string
+		}
+		Cursor *string
+	}
+	var names []string
+	var after *graphql.String
+	for {
+		var q struct {
+			Me struct {
+				Repositories cursor `graphql:"repositories(cursor: $cursor)"`
 			}
 		}
-	}
-	if err := g.c.Query(ctx, &q, nil); err != nil {
-		return nil, err
-	}
-	names := make([]string, 0, len(q.Me.Repositories.Results))
-	for _, r := range q.Me.Repositories.Results {
-		names = append(names, r.Name)
+		vars := map[string]any{"cursor": after}
+		if err := g.c.Query(ctx, &q, vars); err != nil {
+			return nil, err
+		}
+		for _, r := range q.Me.Repositories.Results {
+			names = append(names, r.Name)
+		}
+		if q.Me.Repositories.Cursor == nil || len(q.Me.Repositories.Results) == 0 {
+			break
+		}
+		s := graphql.String(*q.Me.Repositories.Cursor)
+		after = &s
 	}
 	return names, nil
 }

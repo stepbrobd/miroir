@@ -15,6 +15,11 @@ type Meta struct {
 	Archived bool
 }
 
+// Forge abstracts forge CRUD operations
+// Create must return ErrExists if the repo already exists
+// Archive may return ErrUnsupported on forges without archive API
+// List returns all repos owned by the authenticated user
+// Sync is create-or-update with archive handling
 type Forge interface {
 	Create(ctx context.Context, user string, m Meta) error
 	Update(ctx context.Context, user string, m Meta) error
@@ -24,7 +29,10 @@ type Forge interface {
 	Sync(ctx context.Context, user string, m Meta) error
 }
 
-var ErrExists = errors.New("already exists")
+var (
+	ErrExists      = errors.New("already exists")
+	ErrUnsupported = errors.New("not supported by this forge")
+)
 
 func Dispatch(f config.Forge, token, domain string) (Forge, error) {
 	switch f {

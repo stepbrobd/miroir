@@ -3,6 +3,8 @@ package forge
 import (
 	"context"
 	"fmt"
+	"net/http"
+	"strings"
 
 	gl "gitlab.com/gitlab-org/api/client-go"
 	"ysun.co/miroir/internal/config"
@@ -36,7 +38,8 @@ func (g *glForge) Create(ctx context.Context, _ string, m Meta) error {
 		InitializeWithReadme: gl.Ptr(false),
 	}, gl.WithContext(ctx))
 	if err != nil {
-		if resp != nil && resp.StatusCode == 400 {
+		if resp != nil && resp.StatusCode == http.StatusBadRequest &&
+			strings.Contains(err.Error(), "has already been taken") {
 			return ErrExists
 		}
 		return err
@@ -55,11 +58,11 @@ func (g *glForge) Update(ctx context.Context, user string, m Meta) error {
 	return err
 }
 
+// gitlab returns 400 when archive/unarchive is a no-op
 func glIsAlreadyArchived(resp *gl.Response, err error) bool {
-	if resp == nil || resp.StatusCode != 400 || err == nil {
-		return false
-	}
-	return true
+	return resp != nil && resp.StatusCode == http.StatusBadRequest && err != nil &&
+		(strings.Contains(err.Error(), "already archived") ||
+			strings.Contains(err.Error(), "already unarchived"))
 }
 
 func (g *glForge) Archive(ctx context.Context, user, name string, flag bool) error {
@@ -86,20 +89,28 @@ func (g *glForge) Delete(ctx context.Context, user, name string) error {
 
 func (g *glForge) List(ctx context.Context, _ string) ([]string, error) {
 	owned := true
-	projs, _, err := g.c.Projects.ListProjects(&gl.ListProjectsOptions{
+	opt := &gl.ListProjectsOptions{
 		Owned:       &owned,
 		ListOptions: gl.ListOptions{PerPage: 100},
-	}, gl.WithContext(ctx))
-	if err != nil {
-		return nil, err
 	}
-	names := make([]string, 0, len(projs))
-	for _, p := range projs {
-		names = append(names, p.Name)
+	var names []string
+	for {
+		projs, resp, err := g.c.Projects.ListProjects(opt, gl.WithContext(ctx))
+		if err != nil {
+			return nil, err
+		}
+		for _, p := range projs {
+			names = append(names, p.Name)
+		}
+		if resp.NextPage == 0 {
+			break
+		}
+		opt.Page = resp.NextPage
 	}
 	return names, nil
 }
 
+// Update does not set Archived; gitlab requires a separate Archive call
 func (g *glForge) Sync(ctx context.Context, user string, m Meta) error {
 	err := g.Create(ctx, user, m)
 	if err == nil {

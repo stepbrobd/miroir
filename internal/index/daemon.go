@@ -33,10 +33,11 @@ type Cfg struct {
 }
 
 // CfgFrom builds a Cfg from miroir config and sets general.env
-// on the process so child git commands inherit them
+// on the process so child git commands inherit them.
+// must be called before spawning goroutines that exec git
 func CfgFrom(c *config.Config) (*Cfg, error) {
-	for k, v := range c.General.Env {
-		if err := os.Setenv(k, v); err != nil {
+	for _, k := range slices.Sorted(maps.Keys(c.General.Env)) {
+		if err := os.Setenv(k, c.General.Env[k]); err != nil {
 			return nil, fmt.Errorf("setenv %s: %w", k, err)
 		}
 	}
@@ -156,11 +157,12 @@ func Run(ctx context.Context, c *Cfg) error {
 			log.Info("shutting down")
 			cycleWg.Wait()
 			shut, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-			err := httpSrv.Shutdown(shut)
-			cancel()
-			return err
+			defer cancel()
+			return httpSrv.Shutdown(shut)
 		case err := <-errCh:
 			cycleWg.Wait()
+			// still shut down the server to release resources
+			httpSrv.Close()
 			return err
 		case <-ticker.C:
 			startCycle()

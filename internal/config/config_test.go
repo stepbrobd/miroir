@@ -207,12 +207,8 @@ func TestResolveForge(t *testing.T) {
 }
 
 func TestResolveToken(t *testing.T) {
-	// clear env so LookupEnv does not find it; t.Setenv restores on cleanup
-	orig, had := os.LookupEnv("MIROIR_GITHUB_TOKEN")
+	t.Setenv("MIROIR_GITHUB_TOKEN", "")
 	os.Unsetenv("MIROIR_GITHUB_TOKEN")
-	if had {
-		t.Cleanup(func() { os.Setenv("MIROIR_GITHUB_TOKEN", orig) })
-	}
 
 	tok := "config-token"
 	p := Platform{Token: &tok}
@@ -280,6 +276,33 @@ include = ["/var/lib/gitea/repos", "/opt/gitlab/repos"]
 	}
 	if len(ix.Include) != 2 {
 		t.Errorf("include: got %v", ix.Include)
+	}
+}
+
+func TestConcurrencyValidation(t *testing.T) {
+	_, err := Parse(`[general.concurrency]
+repo = 0`)
+	if err == nil {
+		t.Error("expected error for concurrency.repo = 0")
+	}
+
+	_, err = Parse(`[general.concurrency]
+remote = -1`)
+	if err == nil {
+		t.Error("expected error for concurrency.remote = -1")
+	}
+}
+
+func TestAccessRoundTrip(t *testing.T) {
+	cfg, err := Parse(`
+[platform.test]
+domain = "test.com"
+access = "https"`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Platform["test"].Access != HTTPS {
+		t.Errorf("got %v, want HTTPS", cfg.Platform["test"].Access)
 	}
 }
 

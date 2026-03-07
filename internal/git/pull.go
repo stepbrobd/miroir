@@ -1,6 +1,9 @@
 package git
 
-import "fmt"
+import (
+	"errors"
+	"fmt"
+)
 
 type Pull struct{}
 
@@ -20,7 +23,7 @@ func (Pull) Run(p Params) error {
 	if !p.Force && isDirty(p.Path, p.Ctx.Env) {
 		msg := "dirty working tree, use --force to override"
 		p.Disp.ErrorRemote(p.Slot, j, fmt.Sprintf("error: %s", msg))
-		return fmt.Errorf("%s", msg)
+		return errors.New(msg)
 	}
 
 	if p.Force {
@@ -39,7 +42,7 @@ func (Pull) Run(p Params) error {
 
 	info("updating submodules...")
 	err := run(p.Path, p.Ctx.Env, false, out,
-		"submodule", "update", "--recursive", "--remote")
+		"submodule", "update", "--recursive", "--init")
 	if err != nil {
 		p.Disp.ErrorRemote(p.Slot, j, fmt.Sprintf("error: %s", err))
 	} else {

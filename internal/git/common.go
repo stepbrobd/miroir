@@ -2,6 +2,7 @@ package git
 
 import (
 	"bufio"
+	"bytes"
 	"fmt"
 	"os"
 	"os/exec"
@@ -21,15 +22,24 @@ func Available() error {
 }
 
 // stdout and stderr are merged and delivered line-by-line via onOutput
+// when silent is true, output is suppressed but stderr is captured on failure
 func run(dir string, env []string, silent bool, onOutput func(string), args ...string) error {
 	cmd := exec.Command("git", args...)
 	cmd.Dir = dir
 	cmd.Env = env
 
 	if silent {
+		var stderr bytes.Buffer
 		cmd.Stdout = nil
-		cmd.Stderr = nil
-		return cmd.Run()
+		cmd.Stderr = &stderr
+		if err := cmd.Run(); err != nil {
+			if stderr.Len() > 0 {
+				return fmt.Errorf("git %s: %w: %s",
+					strings.Join(args, " "), err, stderr.String())
+			}
+			return err
+		}
+		return nil
 	}
 
 	pr, pw, err := os.Pipe()
@@ -54,6 +64,9 @@ func run(dir string, env []string, silent bool, onOutput func(string), args ...s
 		}
 	}
 	pr.Close()
+	if err := sc.Err(); err != nil {
+		return fmt.Errorf("reading git output: %w", err)
+	}
 
 	if err := cmd.Wait(); err != nil {
 		if exitErr, ok := err.(*exec.ExitError); ok {
@@ -90,11 +103,12 @@ func ensureRepo(path string) error {
 	return nil
 }
 
+// fail-safe: returns true (dirty) on error to prevent unsafe operations
 func isDirty(dir string, env []string) bool {
 	dirty := false
 	err := run(dir, env, false, func(_ string) { dirty = true }, "status", "--porcelain")
 	if err != nil {
-		return false
+		return true
 	}
 	return dirty
 }

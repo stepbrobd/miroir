@@ -38,8 +38,8 @@ func (Init) Run(p Params) error {
 		_ = run(p.Path, p.Ctx.Env, true, nil, "remote", "remove", rname)
 		return run(p.Path, p.Ctx.Env, true, nil, "remote", "add", rname, uri)
 	}
-	for _, r := range p.Ctx.Fetch {
-		if err := setRemote("origin", r.URI); err != nil {
+	if len(p.Ctx.Fetch) == 1 {
+		if err := setRemote("origin", p.Ctx.Fetch[0].URI); err != nil {
 			return err
 		}
 	}

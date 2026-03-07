@@ -3,6 +3,8 @@ package git
 import (
 	"fmt"
 	"sync"
+
+	"ysun.co/miroir/internal/context"
 )
 
 type Push struct{}
@@ -32,7 +34,7 @@ func (Push) Run(p Params) error {
 
 	for _, r := range p.Ctx.Push {
 		wg.Add(1)
-		go func(r struct{ Name, URI string }) {
+		go func(r context.Remote) {
 			defer wg.Done()
 			j := remoteIndex(p.Ctx, r.Name)
 			p.Disp.Remote(p.Slot, j, fmt.Sprintf("%s :: waiting...", r.Name))
@@ -59,7 +61,7 @@ func (Push) Run(p Params) error {
 				err  error
 			}{r.Name, err})
 			mu.Unlock()
-		}(struct{ Name, URI string }{r.Name, r.URI})
+		}(r)
 	}
 	wg.Wait()
 

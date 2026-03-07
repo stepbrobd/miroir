@@ -68,13 +68,19 @@ func (g *ghForge) List(ctx context.Context, _ string) ([]string, error) {
 		Type:        "owner",
 		ListOptions: gh.ListOptions{PerPage: 100},
 	}
-	repos, _, err := g.c.Repositories.ListByAuthenticatedUser(ctx, opt)
-	if err != nil {
-		return nil, err
-	}
-	names := make([]string, 0, len(repos))
-	for _, r := range repos {
-		names = append(names, r.GetName())
+	var names []string
+	for {
+		repos, resp, err := g.c.Repositories.ListByAuthenticatedUser(ctx, opt)
+		if err != nil {
+			return nil, err
+		}
+		for _, r := range repos {
+			names = append(names, r.GetName())
+		}
+		if resp.NextPage == 0 {
+			break
+		}
+		opt.Page = resp.NextPage
 	}
 	return names, nil
 }

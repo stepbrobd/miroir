@@ -4,13 +4,15 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"sync"
 
 	"code.gitea.io/sdk/gitea"
 	"ysun.co/miroir/internal/config"
 )
 
 type cbForge struct {
-	c *gitea.Client
+	mu sync.Mutex
+	c  *gitea.Client
 }
 
 func newCodeberg(token string) (*cbForge, error) {
@@ -26,14 +28,16 @@ func newCodeberg(token string) (*cbForge, error) {
 
 func cbPrivate(v config.Visibility) bool { return v == config.Private }
 
-// gitea SDK uses client-level context via SetContext;
-// each forge instance is per-goroutine so this is safe
+// gitea SDK uses client-level context; guard with mutex since
+// SetContext mutates shared client state
 func (g *cbForge) withCtx(ctx context.Context) {
+	g.mu.Lock()
 	g.c.SetContext(ctx)
 }
 
 func (g *cbForge) Create(ctx context.Context, _ string, m Meta) error {
 	g.withCtx(ctx)
+	defer g.mu.Unlock()
 	desc := descOrEmpty(m.Desc)
 	priv := cbPrivate(m.Vis)
 	_, resp, err := g.c.CreateRepo(gitea.CreateRepoOption{
@@ -53,6 +57,7 @@ func (g *cbForge) Create(ctx context.Context, _ string, m Meta) error {
 
 func (g *cbForge) Update(ctx context.Context, user string, m Meta) error {
 	g.withCtx(ctx)
+	defer g.mu.Unlock()
 	desc := descOrEmpty(m.Desc)
 	priv := cbPrivate(m.Vis)
 	_, _, err := g.c.EditRepo(user, m.Name, gitea.EditRepoOption{
@@ -66,6 +71,7 @@ func (g *cbForge) Update(ctx context.Context, user string, m Meta) error {
 
 func (g *cbForge) Archive(ctx context.Context, user, name string, flag bool) error {
 	g.withCtx(ctx)
+	defer g.mu.Unlock()
 	_, _, err := g.c.EditRepo(user, name, gitea.EditRepoOption{
 		Archived: &flag,
 	})
@@ -74,21 +80,30 @@ func (g *cbForge) Archive(ctx context.Context, user, name string, flag bool) err
 
 func (g *cbForge) Delete(ctx context.Context, user, name string) error {
 	g.withCtx(ctx)
+	defer g.mu.Unlock()
 	_, err := g.c.DeleteRepo(user, name)
 	return err
 }
 
 func (g *cbForge) List(ctx context.Context, _ string) ([]string, error) {
 	g.withCtx(ctx)
-	repos, _, err := g.c.ListMyRepos(gitea.ListReposOptions{
-		ListOptions: gitea.ListOptions{PageSize: 50},
-	})
-	if err != nil {
-		return nil, err
+	defer g.mu.Unlock()
+	opt := gitea.ListReposOptions{
+		ListOptions: gitea.ListOptions{PageSize: 50, Page: 1},
 	}
-	names := make([]string, 0, len(repos))
-	for _, r := range repos {
-		names = append(names, r.Name)
+	var names []string
+	for {
+		repos, _, err := g.c.ListMyRepos(opt)
+		if err != nil {
+			return nil, err
+		}
+		for _, r := range repos {
+			names = append(names, r.Name)
+		}
+		if len(repos) < opt.PageSize {
+			break
+		}
+		opt.Page++
 	}
 	return names, nil
 }
