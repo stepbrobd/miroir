@@ -105,10 +105,11 @@ func ensureRepo(path string) error {
 
 // fail-safe: returns true (dirty) on error to prevent unsafe operations
 func isDirty(dir string, env []string) bool {
-	dirty := false
-	err := run(dir, env, false, func(_ string) { dirty = true }, "status", "--porcelain")
-	if err != nil {
+	if err := run(dir, env, true, nil, "diff", "--quiet", "--ignore-submodules=all"); err != nil {
 		return true
 	}
-	return dirty
+	if err := run(dir, env, true, nil, "diff", "--cached", "--quiet", "--ignore-submodules=all"); err != nil {
+		return true
+	}
+	return false
 }

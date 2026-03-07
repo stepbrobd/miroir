@@ -14,8 +14,9 @@ import (
 
 // Remote describes a named git remote URI.
 type Remote struct {
-	Name string
-	URI  string
+	Name    string
+	GitName string
+	URI     string
 }
 
 // Context contains derived git execution settings for one managed repository.
@@ -71,34 +72,41 @@ func ExpandHome(path string) (string, error) {
 func makeCtx(env []string, platforms map[string]config.Platform, repo, branch string) (*Context, error) {
 	base := os.Environ()
 	merged := make([]string, 0, len(base)+len(env))
-	merged = append(merged, base...)
 	merged = append(merged, env...)
+	merged = append(merged, base...)
 
 	names := slices.Sorted(maps.Keys(platforms))
+	originName := ""
+	for _, n := range names {
+		if platforms[n].Origin {
+			originName = n
+			break
+		}
+	}
 
 	var fetch []Remote
 	for _, n := range names {
 		p := platforms[n]
 		if p.Origin {
 			fetch = append(fetch, Remote{
-				Name: n,
-				URI:  MakeURI(p.Access, p.Domain, p.User, repo),
+				Name:    n,
+				GitName: "origin",
+				URI:     MakeURI(p.Access, p.Domain, p.User, repo),
 			})
 		}
-	}
-	if len(fetch) > 1 {
-		return nil, fmt.Errorf("repo %q: multiple platforms have origin = true", repo)
-	}
-	if len(fetch) == 0 {
-		fmt.Fprintf(os.Stderr, "warning: no platform has origin = true for %s\n", repo)
 	}
 
 	var push []Remote
 	for _, n := range names {
 		p := platforms[n]
+		gitName := n
+		if n == originName {
+			gitName = "origin"
+		}
 		push = append(push, Remote{
-			Name: n,
-			URI:  MakeURI(p.Access, p.Domain, p.User, repo),
+			Name:    n,
+			GitName: gitName,
+			URI:     MakeURI(p.Access, p.Domain, p.User, repo),
 		})
 	}
 

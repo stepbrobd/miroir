@@ -50,7 +50,7 @@ func TestFetchCloneBare(t *testing.T) {
 	}
 
 	r := Repo{Name: "test", URI: src, Branch: "main"}
-	path, err := Fetch(dest, r, true)
+	path, err := Fetch(dest, r, true, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -73,7 +73,7 @@ func TestFetchCloneNonBare(t *testing.T) {
 	}
 
 	r := Repo{Name: "test", URI: src, Branch: "main"}
-	path, err := Fetch(dest, r, false)
+	path, err := Fetch(dest, r, false, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -98,7 +98,7 @@ func TestFetchStatError(t *testing.T) {
 	t.Cleanup(func() { os.Chmod(noread, 0o755) })
 
 	r := Repo{Name: "test", URI: "unused", Branch: "main"}
-	_, err := Fetch(noread, r, true)
+	_, err := Fetch(noread, r, true, nil)
 	if err == nil {
 		t.Error("expected error for stat failure")
 	}
@@ -116,11 +116,11 @@ func TestFetchExisting(t *testing.T) {
 
 	r := Repo{Name: "test", URI: src, Branch: "main"}
 	// first call clones
-	if _, err := Fetch(dest, r, true); err != nil {
+	if _, err := Fetch(dest, r, true, nil); err != nil {
 		t.Fatal(err)
 	}
 	// second call fetches (should not error)
-	if _, err := Fetch(dest, r, true); err != nil {
+	if _, err := Fetch(dest, r, true, nil); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -136,7 +136,7 @@ func TestFetchPicksUpNewCommits(t *testing.T) {
 	}
 
 	r := Repo{Name: "test", URI: src, Branch: "main"}
-	path, err := Fetch(dest, r, true)
+	path, err := Fetch(dest, r, true, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -157,7 +157,7 @@ func TestFetchPicksUpNewCommits(t *testing.T) {
 	}
 
 	// fetch again
-	if _, err := Fetch(dest, r, true); err != nil {
+	if _, err := Fetch(dest, r, true, nil); err != nil {
 		t.Fatal(err)
 	}
 

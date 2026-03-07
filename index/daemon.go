@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"sync"
 	"time"
 
@@ -26,21 +27,15 @@ type Cfg struct {
 	Interval time.Duration
 	Bare     bool
 	Include  []string
+	Env      CmdEnv
 
 	// managed repos derived from miroir config
 	Home  string
 	Repos []Repo
 }
 
-// CfgFrom builds a Cfg from miroir config and sets general.env
-// on the process so child git commands inherit them.
-// must be called before spawning goroutines that exec git
+// CfgFrom builds a daemon config with process env merged with config env.
 func CfgFrom(c *config.Config) (*Cfg, error) {
-	for _, k := range slices.Sorted(maps.Keys(c.General.Env)) {
-		if err := os.Setenv(k, c.General.Env[k]); err != nil {
-			return nil, fmt.Errorf("setenv %s: %w", k, err)
-		}
-	}
 	home, err := workspace.ExpandHome(c.General.Home)
 	if err != nil {
 		return nil, err
@@ -53,6 +48,7 @@ func CfgFrom(c *config.Config) (*Cfg, error) {
 	if c.Index.Interval <= 0 {
 		return nil, fmt.Errorf("index.interval must be positive, got %d", c.Index.Interval)
 	}
+	env := mergeEnv(c.General.Env)
 
 	var repos []Repo
 	// deterministic iteration
@@ -83,9 +79,32 @@ func CfgFrom(c *config.Config) (*Cfg, error) {
 		Interval: time.Duration(c.Index.Interval) * time.Second,
 		Bare:     c.Index.Bare,
 		Include:  c.Index.Include,
+		Env:      env,
 		Home:     filepath.Clean(home),
 		Repos:    repos,
 	}, nil
+}
+
+func mergeEnv(extra map[string]string) CmdEnv {
+	base := os.Environ()
+	if len(extra) == 0 {
+		return CmdEnv(base)
+	}
+	seen := make(map[string]struct{}, len(base))
+	merged := make([]string, 0, len(base)+len(extra))
+	for _, item := range base {
+		merged = append(merged, item)
+		if i := strings.IndexByte(item, '='); i >= 0 {
+			seen[item[:i]] = struct{}{}
+		}
+	}
+	for _, key := range slices.Sorted(maps.Keys(extra)) {
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		merged = append(merged, key+"="+extra[key])
+	}
+	return CmdEnv(merged)
 }
 
 // Run starts the daemon, blocks until ctx is cancelled
@@ -178,12 +197,12 @@ func cycle(c *Cfg) {
 
 	// fetch and index each managed repo immediately
 	for _, r := range c.Repos {
-		p, err := Fetch(c.Home, r, c.Bare)
+		p, err := Fetch(c.Home, r, c.Bare, c.Env)
 		if err != nil {
 			log.Error("fetch failed", "repo", r.Name, "err", err)
 			continue
 		}
-		if err := IndexRepo(p, c.Database, nil); err != nil {
+		if err := IndexRepo(p, c.Database, []string{r.Branch}); err != nil {
 			log.Error("index failed", "repo", r.Name, "err", err)
 			continue
 		}

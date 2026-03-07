@@ -15,8 +15,8 @@ func TestAvailable(t *testing.T) {
 func TestRemoteIndex(t *testing.T) {
 	ctx := &workspace.Context{
 		Push: []workspace.Remote{
-			{Name: "github", URI: "git@github.com:a/b"},
-			{Name: "gitlab", URI: "git@gitlab.com:a/b"},
+			{Name: "github", GitName: "origin", URI: "git@github.com:a/b"},
+			{Name: "gitlab", GitName: "gitlab", URI: "git@gitlab.com:a/b"},
 		},
 	}
 	if i := remoteIndex(ctx, "github"); i != 0 {

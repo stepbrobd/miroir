@@ -43,7 +43,7 @@ func (Push) Run(p Params) error {
 
 			p.Disp.Remote(p.Slot, j, fmt.Sprintf("%s :: pushing...", r.Name))
 			args := append([]string{"push"}, forceArgs...)
-			args = append(args, r.Name, p.Ctx.Branch)
+			args = append(args, r.GitName, p.Ctx.Branch)
 			args = append(args, p.Args...)
 			err := run(p.Path, p.Ctx.Env, false,
 				func(s string) { p.Disp.Output(p.Slot, j, s) },

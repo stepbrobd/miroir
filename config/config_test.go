@@ -6,7 +6,7 @@ import (
 )
 
 func TestDefaults(t *testing.T) {
-	cfg, err := Parse("")
+	cfg, err := Parse("[platform.origin]\norigin = true\ndomain = \"github.com\"\n")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -21,6 +21,24 @@ func TestDefaults(t *testing.T) {
 	}
 	if cfg.General.Concurrency.Remote != 0 {
 		t.Errorf("concurrency.remote: got %d, want 0", cfg.General.Concurrency.Remote)
+	}
+}
+
+func TestValidateRequiresExactlyOneOrigin(t *testing.T) {
+	if _, err := Parse(""); err == nil {
+		t.Fatal("expected missing origin error")
+	}
+	_, err := Parse(`
+[platform.a]
+origin = true
+domain = "a.com"
+
+[platform.b]
+origin = true
+domain = "b.com"
+`)
+	if err == nil {
+		t.Fatal("expected multiple origin error")
 	}
 }
 
@@ -226,7 +244,7 @@ func TestResolveToken(t *testing.T) {
 }
 
 func TestIndexDefaults(t *testing.T) {
-	cfg, err := Parse("")
+	cfg, err := Parse("[platform.origin]\norigin = true\ndomain = \"github.com\"\n")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -250,6 +268,10 @@ func TestIndexDefaults(t *testing.T) {
 
 func TestIndexConfig(t *testing.T) {
 	s := `
+[platform.origin]
+origin = true
+domain = "github.com"
+
 [index]
 listen = ":8080"
 database = "/tmp/idx"
@@ -282,6 +304,7 @@ include = ["/var/lib/gitea/repos", "/opt/gitlab/repos"]
 func TestAccessRoundTrip(t *testing.T) {
 	cfg, err := Parse(`
 [platform.test]
+origin = true
 domain = "test.com"
 access = "https"`)
 	if err != nil {

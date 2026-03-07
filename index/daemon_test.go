@@ -4,6 +4,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"testing"
 	"time"
 
@@ -165,9 +166,10 @@ func TestCfgFromValidation(t *testing.T) {
 
 func TestCfgFromBasic(t *testing.T) {
 	t.Setenv("HOME", "/tmp/test")
+	t.Setenv("FROM_SHELL", "shell")
 
 	c := &config.Config{
-		General: config.General{Home: "/tmp/ws", Branch: "main"},
+		General: config.General{Home: "/tmp/ws", Branch: "main", Env: map[string]string{"FROM_SHELL": "config", "ONLY_CONFIG": "yes"}},
 		Platform: map[string]config.Platform{
 			"gh": {Origin: true, Domain: "github.com", User: "alice"},
 		},
@@ -198,6 +200,12 @@ func TestCfgFromBasic(t *testing.T) {
 	}
 	if got.Repos[0].Name != "foo" {
 		t.Errorf("repo name: got %q", got.Repos[0].Name)
+	}
+	if !slices.Contains([]string(got.Env), "FROM_SHELL=shell") {
+		t.Errorf("expected shell env precedence, got %v", got.Env)
+	}
+	if !slices.Contains([]string(got.Env), "ONLY_CONFIG=yes") {
+		t.Errorf("expected config env to be merged, got %v", got.Env)
 	}
 }
 

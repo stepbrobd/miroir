@@ -29,6 +29,8 @@ type line struct {
 	kind lineKind
 }
 
+const outputPlaceholder = "[no output]"
+
 // Display renders a live-updating progress grid in TTY mode
 // using direct ANSI escape codes, or structured log in non-TTY mode.
 type Display struct {
@@ -60,6 +62,9 @@ func New(repos, remotes int, th Theme, ttyOverride *bool) *Display {
 		d.stride = 1 + 2*remotes
 		total := repos * d.stride
 		d.lines = make([]line, max(1, total))
+		for slot := range repos {
+			d.resetSlot(slot)
+		}
 	} else {
 		d.log = log.NewWithOptions(os.Stdout, log.Options{
 			ReportTimestamp: false,
@@ -67,6 +72,24 @@ func New(repos, remotes int, th Theme, ttyOverride *bool) *Display {
 		})
 	}
 	return d
+}
+
+func (d *Display) resetSlot(slot int) {
+	if !d.tty {
+		return
+	}
+	base := slot * d.stride
+	if base >= len(d.lines) {
+		return
+	}
+	d.lines[base] = line{}
+	for i := 1; base+i < len(d.lines) && i < d.stride; i++ {
+		if i%2 == 1 {
+			d.lines[base+i] = line{}
+			continue
+		}
+		d.lines[base+i] = line{text: outputPlaceholder, kind: lineOutput}
+	}
 }
 
 // padding is defined here, not in Theme, so error variants stay aligned
@@ -136,10 +159,16 @@ func (d *Display) Remote(slot, j int, msg string) {
 
 func (d *Display) Output(slot, j int, msg string) {
 	if d.tty {
+		if msg == "" {
+			msg = outputPlaceholder
+		}
 		d.set(slot*d.stride+2+2*j, line{msg, lineOutput})
 	} else {
+		if msg == "" {
+			msg = outputPlaceholder
+		}
 		d.mu.Lock()
-		d.log.Debug(msg, "indent", 2)
+		d.log.Info(msg, "indent", 2)
 		d.mu.Unlock()
 	}
 }
@@ -166,8 +195,14 @@ func (d *Display) ErrorRemote(slot, j int, msg string) {
 
 func (d *Display) ErrorOutput(slot, j int, msg string) {
 	if d.tty {
+		if msg == "" {
+			msg = outputPlaceholder
+		}
 		d.set(slot*d.stride+2+2*j, line{msg, lineErrorOutput})
 	} else {
+		if msg == "" {
+			msg = outputPlaceholder
+		}
 		d.mu.Lock()
 		d.log.Error(msg, "indent", 2)
 		d.mu.Unlock()
@@ -178,12 +213,7 @@ func (d *Display) Clear(slot int) {
 	if d.tty {
 		d.mu.Lock()
 		defer d.mu.Unlock()
-		base := slot * d.stride
-		for i := range d.stride {
-			if base+i < len(d.lines) {
-				d.lines[base+i] = line{}
-			}
-		}
+		d.resetSlot(slot)
 		d.redraw()
 	}
 }

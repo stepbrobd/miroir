@@ -154,6 +154,22 @@ type Config struct {
 	Index    Index               `toml:"index"`
 }
 
+func Validate(cfg *Config) error {
+	origins := 0
+	for name, platform := range cfg.Platform {
+		if platform.Origin {
+			origins++
+		}
+		if platform.Domain == "" {
+			return fmt.Errorf("platform %q: domain is required", name)
+		}
+	}
+	if origins != 1 {
+		return fmt.Errorf("expected exactly one platform with origin = true, got %d", origins)
+	}
+	return nil
+}
+
 // nil if domain is not a known forge
 func ForgeOfDomain(domain string) *Forge {
 	d := strings.ToLower(domain)
@@ -217,6 +233,9 @@ func Parse(s string) (*Config, error) {
 	}
 	if _, err := toml.Decode(s, cfg); err != nil {
 		return nil, fmt.Errorf("config parse: %w", err)
+	}
+	if err := Validate(cfg); err != nil {
+		return nil, err
 	}
 	return cfg, nil
 }

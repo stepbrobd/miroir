@@ -29,7 +29,7 @@ remote = 0                    # 0 = no limit
 GIT_SSH_COMMAND = "ssh -o StrictHostKeyChecking=no"
 
 [platform.github]
-origin = true                 # At most one platform can be origin per repo
+origin = true                 # Exactly one platform must be origin
 domain = "github.com"
 user = "alice"
 access = "ssh"                # "ssh" (default) or "https"
@@ -69,19 +69,19 @@ include = [                   # Extra directories of repos to index (one level d
 
 ### General
 
-| Field                | Default  | Description                                       |
-| -------------------- | -------- | ------------------------------------------------- |
-| `home`               | `~/`     | Base directory containing repos                   |
-| `branch`             | `master` | Default branch for all repos                      |
-| `concurrency.repo`   | `1`      | Max concurrent repo operations                    |
-| `concurrency.remote` | `0`      | Max concurrent remote ops per repo (0 = no limit) |
-| `env`                |          | Extra environment variables for git commands      |
+| Field                | Default  | Description                                                       |
+| -------------------- | -------- | ----------------------------------------------------------------- |
+| `home`               | `~/`     | Base directory containing repos                                   |
+| `branch`             | `master` | Default branch for all repos                                      |
+| `concurrency.repo`   | `1`      | Max concurrent repo operations                                    |
+| `concurrency.remote` | `0`      | Max concurrent remote ops per repo (0 = no limit)                 |
+| `env`                |          | Extra environment variables added unless already set in the shell |
 
 ### Platform
 
 | Field    | Default | Description                                                                |
 | -------- | ------- | -------------------------------------------------------------------------- |
-| `origin` | `false` | Treat as origin remote (at most one per repo)                              |
+| `origin` | `false` | Treat as origin remote (exactly one platform must set this to `true`)      |
 | `domain` |         | Forge domain                                                               |
 | `user`   |         | Username on forge                                                          |
 | `access` | `ssh`   | `ssh` or `https`                                                           |
@@ -138,14 +138,18 @@ miroir init                   # Init repo for cwd
 miroir init -a                # Init all repos
 ```
 
-Creates the directory, initializes git, adds all remotes, fetches, resets to
-`origin/<branch>`, and initializes submodules.
+Creates the directory, initializes git, adds all named platform remotes plus
+`origin`, fetches, resets to `origin/<branch>`, and initializes submodules.
 
 **fetch** -- Fetch from all remotes (concurrent)
 
 ```sh
 miroir fetch -a
 ```
+
+The platform marked `origin = true` is operated through the literal `origin`
+remote so shell prompt tooling sees up-to-date upstream state, while progress
+output still shows the configured platform name.
 
 **pull** -- Pull from origin
 
@@ -200,7 +204,7 @@ Starts a long-running daemon that:
 
 1. Clones/fetches managed repos (from `[repo.*]` config) on a timer
 2. Discovers repos from `[index].include` paths (one level deep, no git ops)
-3. Indexes all repos using zoekt's trigram indexer
+3. Indexes each managed repo's configured branch using zoekt's trigram indexer
 4. Serves the zoekt search API and web UI over HTTP
 
 The searcher hot-reloads index shards -- no restart needed after re-indexing.
@@ -258,4 +262,6 @@ remote = 0
 
 When stdout is a TTY, miroir uses a real-time TUI showing per-repo and
 per-remote progress. When piped, it falls back to structured log output. The
-`index` command always uses structured logging (no TTY mode).
+`index` command always uses structured logging (no TTY mode). When a git command
+produces no stdout/stderr for a remote, miroir renders `[no output]` to preserve
+the output row ordering.

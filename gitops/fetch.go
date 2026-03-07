@@ -39,7 +39,7 @@ func (Fetch) Run(p Params) error {
 			p.Disp.Remote(p.Slot, j, fmt.Sprintf("%s :: fetching...", r.Name))
 			err := run(p.Path, p.Ctx.Env, false,
 				func(s string) { p.Disp.Output(p.Slot, j, s) },
-				append([]string{"fetch", r.Name}, p.Args...)...)
+				append([]string{"fetch", r.GitName}, p.Args...)...)
 
 			if err != nil {
 				p.Disp.ErrorRemote(p.Slot, j, fmt.Sprintf("%s :: error", r.Name))

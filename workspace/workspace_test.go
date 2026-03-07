@@ -115,22 +115,38 @@ func TestMakeAll(t *testing.T) {
 	if len(active.Push) != 1 {
 		t.Errorf("active push remotes: got %d, want 1", len(active.Push))
 	}
+	if active.Fetch[0].GitName != "origin" {
+		t.Errorf("fetch git name: got %q, want origin", active.Fetch[0].GitName)
+	}
+	if active.Push[0].Name != "github" || active.Push[0].GitName != "origin" {
+		t.Errorf("push remote: got %+v", active.Push[0])
+	}
 }
 
-func TestMakeAllMultiOrigin(t *testing.T) {
+func TestMakeAllOriginAliasPreservesDisplayName(t *testing.T) {
 	t.Setenv("HOME", "/home/test")
 	cfg := &config.Config{
 		General: config.General{Home: "/ws", Branch: "master"},
 		Platform: map[string]config.Platform{
-			"a": {Origin: true, Domain: "a.com", Access: config.SSH},
-			"b": {Origin: true, Domain: "b.com", Access: config.SSH},
+			"github": {Origin: true, Domain: "github.com", Access: config.SSH},
+			"gitlab": {Domain: "gitlab.com", Access: config.SSH},
 		},
 		Repo: map[string]config.Repo{
 			"r": {Visibility: config.Public},
 		},
 	}
-	_, err := MakeAll(cfg)
-	if err == nil {
-		t.Fatal("expected error for multiple origins")
+	ctxs, err := MakeAll(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := ctxs["/ws/r"]
+	if len(ctx.Push) != 2 {
+		t.Fatalf("push remotes: got %d, want 2", len(ctx.Push))
+	}
+	if ctx.Push[0].Name != "github" || ctx.Push[0].GitName != "origin" {
+		t.Errorf("origin alias mismatch: %+v", ctx.Push[0])
+	}
+	if ctx.Push[1].Name != "gitlab" || ctx.Push[1].GitName != "gitlab" {
+		t.Errorf("gitlab mismatch: %+v", ctx.Push[1])
 	}
 }
