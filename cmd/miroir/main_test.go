@@ -237,3 +237,40 @@ func TestSelectTargetsRejectsManagedRepoOutsideWorkspace(t *testing.T) {
 		t.Fatal("expected error for managed repo outside workspace")
 	}
 }
+
+func TestSyncNamesByName(t *testing.T) {
+	t.Setenv("HOME", "/home/test")
+	cfg = &config.Config{
+		General: config.General{Home: "/home/test/ws"},
+		Repo: map[string]config.Repo{
+			"alpha": {},
+			"beta":  {},
+		},
+	}
+	nameFlag = "alpha"
+	allFlag = false
+	t.Cleanup(func() { nameFlag = "" })
+
+	got, err := syncNames()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0] != "alpha" {
+		t.Fatalf("got %v, want [alpha]", got)
+	}
+}
+
+func TestSyncNamesRejectsNestedRepoName(t *testing.T) {
+	t.Setenv("HOME", "/home/test")
+	cfg = &config.Config{
+		General: config.General{Home: "/home/test/ws"},
+		Repo: map[string]config.Repo{
+			"group/alpha": {},
+		},
+	}
+
+	_, err := syncNames()
+	if err == nil {
+		t.Fatal("expected error for nested sync repo path")
+	}
+}

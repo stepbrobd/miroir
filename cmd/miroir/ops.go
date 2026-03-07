@@ -262,30 +262,25 @@ func syncRepo(disp *display.Display, slot int, sem chan struct{}, name string) [
 
 // includes archived repos (unlike selectTargets which uses ctxs)
 func syncNames() ([]string, error) {
-	if nameFlag != "" {
-		if _, ok := cfg.Repo[nameFlag]; !ok {
-			return nil, fmt.Errorf("repo '%s' not found in config", nameFlag)
-		}
-		return []string{nameFlag}, nil
-	}
-	if allFlag {
-		return slices.Sorted(maps.Keys(cfg.Repo)), nil
-	}
 	home, err := mirctx.ExpandHome(cfg.General.Home)
 	if err != nil {
 		return nil, err
 	}
-	cwd, err := os.Getwd()
-	if err != nil {
-		return nil, fmt.Errorf("getwd: %w", err)
-	}
-	for _, name := range slices.Sorted(maps.Keys(cfg.Repo)) {
+	names := slices.Sorted(maps.Keys(cfg.Repo))
+	for _, name := range names {
 		path := filepath.Join(home, name)
-		if path == cwd || strings.HasPrefix(cwd, path+string(filepath.Separator)) {
-			return []string{name}, nil
+		rel, err := filepath.Rel(home, path)
+		if err != nil {
+			return nil, fmt.Errorf("repo path %q: %w", path, err)
+		}
+		if rel == "." || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+			return nil, fmt.Errorf("repo path %q is outside workspace %q", path, home)
+		}
+		if strings.Contains(rel, string(filepath.Separator)) {
+			return nil, fmt.Errorf("repo path %q is not flat under workspace %q", path, home)
 		}
 	}
-	return nil, fmt.Errorf("not a managed repository (cwd: %s)", cwd)
+	return resolveNames(names, home)
 }
 
 func runSync() error {
