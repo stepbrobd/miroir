@@ -9,6 +9,7 @@ import (
 
 	lipgloss "charm.land/lipgloss/v2"
 	"github.com/charmbracelet/log"
+	"github.com/charmbracelet/x/ansi"
 	"golang.org/x/term"
 )
 
@@ -40,7 +41,8 @@ type Display struct {
 	width  int
 	stride int
 	theme  Theme
-	drawn  bool
+	drawn  int
+	ready  bool
 	log    *log.Logger
 }
 
@@ -113,19 +115,66 @@ func (d *Display) styled(k lineKind) lipgloss.Style {
 	}
 }
 
-// redraw repaints all lines. caller must hold d.mu.
-func (d *Display) redraw() {
-	var buf strings.Builder
-	if d.drawn {
-		fmt.Fprintf(&buf, "\x1b[%dA", len(d.lines))
+func (d *Display) leftPad(k lineKind) int {
+	switch k {
+	case lineRemote, lineErrorRemote:
+		return 2
+	case lineOutput, lineErrorOutput:
+		return 4
+	default:
+		return 0
 	}
-	for _, l := range d.lines {
-		buf.WriteString("\x1b[2K")
-		buf.WriteString(d.styled(l.kind).Render(l.text))
+}
+
+func (d *Display) renderLine(l line) string {
+	w := max(1, d.width-d.leftPad(l.kind))
+	return d.styled(l.kind).Render(ansi.Truncate(l.text, w, ""))
+}
+
+func (d *Display) reserve(lines int) {
+	if lines <= 0 {
+		return
+	}
+	var buf strings.Builder
+	for range lines {
 		buf.WriteByte('\n')
 	}
+	fmt.Fprintf(&buf, "\x1b[%dA", lines)
 	os.Stdout.WriteString(buf.String())
-	d.drawn = true
+	d.ready = true
+}
+
+// redraw repaints all provided lines. caller must hold d.mu.
+func (d *Display) redraw(lines []line) {
+	if !d.ready {
+		d.reserve(len(lines))
+	}
+	var buf strings.Builder
+	if d.drawn > 0 {
+		fmt.Fprintf(&buf, "\x1b[%dA", d.drawn)
+	}
+	for _, l := range lines {
+		buf.WriteString("\x1b[2K")
+		buf.WriteString(d.renderLine(l))
+		buf.WriteByte('\n')
+	}
+	if d.drawn > len(lines) {
+		extra := d.drawn - len(lines)
+		for range extra {
+			buf.WriteString("\x1b[2K\n")
+		}
+		fmt.Fprintf(&buf, "\x1b[%dA", extra)
+	}
+	os.Stdout.WriteString(buf.String())
+	d.drawn = len(lines)
+}
+
+func normalizeOutput(msg string) string {
+	msg = strings.TrimSpace(msg)
+	if msg == "" {
+		return outputPlaceholder
+	}
+	return msg
 }
 
 func (d *Display) set(idx int, l line) {
@@ -134,7 +183,7 @@ func (d *Display) set(idx int, l line) {
 	if idx >= 0 && idx < len(d.lines) {
 		d.lines[idx] = l
 	}
-	d.redraw()
+	d.redraw(d.lines)
 }
 
 func (d *Display) Repo(slot int, msg string) {
@@ -159,13 +208,11 @@ func (d *Display) Remote(slot, j int, msg string) {
 
 func (d *Display) Output(slot, j int, msg string) {
 	if d.tty {
-		if msg == "" {
-			msg = outputPlaceholder
-		}
-		d.set(slot*d.stride+2+2*j, line{msg, lineOutput})
+		d.set(slot*d.stride+2+2*j, line{normalizeOutput(msg), lineOutput})
 	} else {
+		msg = strings.TrimSpace(msg)
 		if msg == "" {
-			msg = outputPlaceholder
+			return
 		}
 		d.mu.Lock()
 		d.log.Info(msg, "indent", 2)
@@ -195,13 +242,11 @@ func (d *Display) ErrorRemote(slot, j int, msg string) {
 
 func (d *Display) ErrorOutput(slot, j int, msg string) {
 	if d.tty {
-		if msg == "" {
-			msg = outputPlaceholder
-		}
-		d.set(slot*d.stride+2+2*j, line{msg, lineErrorOutput})
+		d.set(slot*d.stride+2+2*j, line{normalizeOutput(msg), lineErrorOutput})
 	} else {
+		msg = strings.TrimSpace(msg)
 		if msg == "" {
-			msg = outputPlaceholder
+			return
 		}
 		d.mu.Lock()
 		d.log.Error(msg, "indent", 2)
@@ -214,14 +259,14 @@ func (d *Display) Clear(slot int) {
 		d.mu.Lock()
 		defer d.mu.Unlock()
 		d.resetSlot(slot)
-		d.redraw()
+		d.redraw(d.lines)
 	}
 }
 
 func (d *Display) Finish() {
 	if d.tty {
 		d.mu.Lock()
-		d.redraw()
+		d.redraw(d.lines)
 		d.mu.Unlock()
 	}
 }

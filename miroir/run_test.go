@@ -79,7 +79,31 @@ func TestRunGitOpParallelFailure(t *testing.T) {
 	if len(reporter.clearSlots) == 0 {
 		t.Fatal("expected slot clears in parallel path")
 	}
-	if len(reporter.errorMsgs) == 0 {
-		t.Fatal("expected reported errors")
+	if len(reporter.errorMsgs) != 0 {
+		t.Fatalf("did not expect repo-level reporter errors got %v", reporter.errorMsgs)
+	}
+}
+
+func TestRunGitOpSequentialFailureDoesNotReportRepoError(t *testing.T) {
+	reporter := &fakeReporter{}
+	ctxs := map[string]*workspace.Context{"/tmp/a": {}}
+	op := fakeOp{remotes: 0, run: func(p git.Params) error {
+		return errors.New("boom")
+	}}
+	err := RunGitOp(op, RunOptions{
+		Targets:         []string{"/tmp/a"},
+		Contexts:        ctxs,
+		PlatformCount:   1,
+		RepoConcurrency: 1,
+		Reporter:        reporter,
+	})
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	if len(reporter.errorMsgs) != 0 {
+		t.Fatalf("did not expect repo-level reporter errors got %v", reporter.errorMsgs)
+	}
+	if !reporter.finished {
+		t.Fatal("expected reporter finish")
 	}
 }

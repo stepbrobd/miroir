@@ -60,7 +60,6 @@ func RunGitOp(op git.Op, opts RunOptions) error {
 			if err != nil {
 				name := filepath.Base(target)
 				addErr(name, err.Error())
-				opts.Reporter.Error(0, fmt.Sprintf("error: %s", err))
 			}
 		}
 		opts.Reporter.Finish()
@@ -95,7 +94,6 @@ func RunGitOp(op git.Op, opts RunOptions) error {
 				if err != nil {
 					name := filepath.Base(target)
 					addErr(name, err.Error())
-					opts.Reporter.Error(slot, fmt.Sprintf("error: %s", err))
 				}
 			}(target)
 		}
