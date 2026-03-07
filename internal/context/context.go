@@ -57,13 +57,13 @@ func ExpandHome(path string) (string, error) {
 		if err != nil {
 			return "", err
 		}
-		return h + path[1:], nil
+		return filepath.Join(h, path[2:]), nil
 	}
 	return path, nil
 }
 
 // at most one platform may have origin = true per repo
-func make_(env []string, platforms map[string]config.Platform, repo, branch string) (*Context, error) {
+func makeCtx(env []string, platforms map[string]config.Platform, repo, branch string) (*Context, error) {
 	base := os.Environ()
 	merged := make([]string, 0, len(base)+len(env))
 	merged = append(merged, base...)
@@ -101,9 +101,10 @@ func make_(env []string, platforms map[string]config.Platform, repo, branch stri
 }
 
 func envSlice(m map[string]string) []string {
+	keys := slices.Sorted(maps.Keys(m))
 	s := make([]string, 0, len(m))
-	for k, v := range m {
-		s = append(s, k+"="+v)
+	for _, k := range keys {
+		s = append(s, k+"="+m[k])
 	}
 	return s
 }
@@ -124,7 +125,7 @@ func MakeAll(cfg *config.Config) (map[string]*Context, error) {
 		if repo.Branch != nil {
 			branch = *repo.Branch
 		}
-		ctx, err := make_(env, cfg.Platform, name, branch)
+		ctx, err := makeCtx(env, cfg.Platform, name, branch)
 		if err != nil {
 			return nil, err
 		}

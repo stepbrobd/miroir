@@ -119,7 +119,7 @@ func TestSelectTargetsByName(t *testing.T) {
 	setupTargets(t, "/home/test/ws", "alpha", "beta")
 	nameFlag = "alpha"
 	allFlag = false
-	defer func() { nameFlag = "" }()
+	t.Cleanup(func() { nameFlag = "" })
 
 	got, err := selectTargets()
 	if err != nil {
@@ -135,7 +135,7 @@ func TestSelectTargetsByNameNotFound(t *testing.T) {
 	setupTargets(t, "/home/test/ws", "alpha")
 	nameFlag = "missing"
 	allFlag = false
-	defer func() { nameFlag = "" }()
+	t.Cleanup(func() { nameFlag = "" })
 
 	_, err := selectTargets()
 	if err == nil {
@@ -148,7 +148,7 @@ func TestSelectTargetsAll(t *testing.T) {
 	setupTargets(t, "/home/test/ws", "beta", "alpha")
 	nameFlag = ""
 	allFlag = true
-	defer func() { allFlag = false }()
+	t.Cleanup(func() { allFlag = false })
 
 	got, err := selectTargets()
 	if err != nil {

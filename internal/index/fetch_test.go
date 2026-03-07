@@ -18,7 +18,9 @@ func skipNoGit(t *testing.T) {
 func seedRepo(t *testing.T, dir string) string {
 	t.Helper()
 	src := filepath.Join(dir, "seed")
-	os.MkdirAll(src, 0o755)
+	if err := os.MkdirAll(src, 0o755); err != nil {
+		t.Fatal(err)
+	}
 	env := append(os.Environ(),
 		"GIT_AUTHOR_NAME=test", "GIT_AUTHOR_EMAIL=t@t",
 		"GIT_COMMITTER_NAME=test", "GIT_COMMITTER_EMAIL=t@t",
@@ -43,7 +45,9 @@ func TestFetchCloneBare(t *testing.T) {
 	src := seedRepo(t, tmp)
 
 	dest := filepath.Join(tmp, "repos")
-	os.MkdirAll(dest, 0o755)
+	if err := os.MkdirAll(dest, 0o755); err != nil {
+		t.Fatal(err)
+	}
 
 	r := Repo{Name: "test", URI: src, Branch: "main"}
 	path, err := Fetch(dest, r, true)
@@ -64,7 +68,9 @@ func TestFetchCloneNonBare(t *testing.T) {
 	src := seedRepo(t, tmp)
 
 	dest := filepath.Join(tmp, "repos")
-	os.MkdirAll(dest, 0o755)
+	if err := os.MkdirAll(dest, 0o755); err != nil {
+		t.Fatal(err)
+	}
 
 	r := Repo{Name: "test", URI: src, Branch: "main"}
 	path, err := Fetch(dest, r, false)
@@ -85,7 +91,9 @@ func TestFetchStatError(t *testing.T) {
 
 	// create a non-readable dir so stat on children fails
 	noread := filepath.Join(tmp, "noread")
-	os.MkdirAll(noread, 0o755)
+	if err := os.MkdirAll(noread, 0o755); err != nil {
+		t.Fatal(err)
+	}
 	os.Chmod(noread, 0o000)
 	t.Cleanup(func() { os.Chmod(noread, 0o755) })
 
@@ -102,7 +110,9 @@ func TestFetchExisting(t *testing.T) {
 	src := seedRepo(t, tmp)
 
 	dest := filepath.Join(tmp, "repos")
-	os.MkdirAll(dest, 0o755)
+	if err := os.MkdirAll(dest, 0o755); err != nil {
+		t.Fatal(err)
+	}
 
 	r := Repo{Name: "test", URI: src, Branch: "main"}
 	// first call clones
@@ -121,7 +131,9 @@ func TestFetchPicksUpNewCommits(t *testing.T) {
 	src := seedRepo(t, tmp)
 
 	dest := filepath.Join(tmp, "repos")
-	os.MkdirAll(dest, 0o755)
+	if err := os.MkdirAll(dest, 0o755); err != nil {
+		t.Fatal(err)
+	}
 
 	r := Repo{Name: "test", URI: src, Branch: "main"}
 	path, err := Fetch(dest, r, true)

@@ -29,7 +29,9 @@ func seedRepoWithFile(t *testing.T, dir, name, content string) string {
 		}
 	}
 	run("init", "--initial-branch=main")
-	os.WriteFile(filepath.Join(src, name), []byte(content), 0o644)
+	if err := os.WriteFile(filepath.Join(src, name), []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	run("add", ".")
 	run("commit", "-m", "add file")
 	return src
@@ -42,8 +44,12 @@ func TestCycleIntegration(t *testing.T) {
 
 	home := filepath.Join(tmp, "repos")
 	db := filepath.Join(tmp, "shards")
-	os.MkdirAll(home, 0o755)
-	os.MkdirAll(db, 0o755)
+	if err := os.MkdirAll(home, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(db, 0o755); err != nil {
+		t.Fatal(err)
+	}
 
 	c := &Cfg{
 		Listen:   ":0",
@@ -80,7 +86,9 @@ func TestCycleWithInclude(t *testing.T) {
 	// create a repo inside an include dir
 	incDir := filepath.Join(tmp, "include")
 	repoDir := filepath.Join(incDir, "myrepo")
-	os.MkdirAll(repoDir, 0o755)
+	if err := os.MkdirAll(repoDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
 
 	env := append(os.Environ(),
 		"GIT_AUTHOR_NAME=test", "GIT_AUTHOR_EMAIL=t@t",
@@ -96,12 +104,16 @@ func TestCycleWithInclude(t *testing.T) {
 		}
 	}
 	run("init", "--initial-branch=main")
-	os.WriteFile(filepath.Join(repoDir, "lib.go"), []byte("package lib\n"), 0o644)
+	if err := os.WriteFile(filepath.Join(repoDir, "lib.go"), []byte("package lib\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	run("add", ".")
 	run("commit", "-m", "init")
 
 	db := filepath.Join(tmp, "shards")
-	os.MkdirAll(db, 0o755)
+	if err := os.MkdirAll(db, 0o755); err != nil {
+		t.Fatal(err)
+	}
 
 	c := &Cfg{
 		Listen:   ":0",

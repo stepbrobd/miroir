@@ -68,15 +68,16 @@ func New(repos, remotes int, th Theme, ttyOverride *bool) *Display {
 	return d
 }
 
+// padding is defined here, not in Theme, so error variants stay aligned
 func (d *Display) styled(k lineKind) lipgloss.Style {
 	w := d.width
 	switch k {
 	case lineRepo:
 		return d.theme.Repo.Width(w).MaxWidth(w)
 	case lineRemote:
-		return d.theme.Remote.Width(w).MaxWidth(w)
+		return d.theme.Remote.PaddingLeft(2).Width(w).MaxWidth(w)
 	case lineOutput:
-		return d.theme.Output.Width(w).MaxWidth(w)
+		return d.theme.Output.PaddingLeft(4).Width(w).MaxWidth(w)
 	case lineError:
 		return d.theme.Error.Width(w).MaxWidth(w)
 	case lineErrorRemote:

@@ -27,6 +27,26 @@ func TestDispatchSourcehut(t *testing.T) {
 	}
 }
 
+func TestDispatchGitlab(t *testing.T) {
+	f, err := Dispatch(config.Gitlab, "dummy", "gitlab.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if f == nil {
+		t.Error("expected non-nil forge")
+	}
+}
+
+func TestDispatchCodeberg(t *testing.T) {
+	f, err := Dispatch(config.Codeberg, "dummy", "codeberg.org")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if f == nil {
+		t.Error("expected non-nil forge")
+	}
+}
+
 func TestDispatchUnknown(t *testing.T) {
 	_, err := Dispatch(config.Forge(99), "dummy", "example.com")
 	if err == nil {
