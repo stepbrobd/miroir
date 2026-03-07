@@ -178,3 +178,35 @@ func TestInitPopulatesSubmodules(t *testing.T) {
 		t.Fatalf("expected populated submodule: %v", err)
 	}
 }
+
+func TestInitDirtyExistingRepoRequiresForce(t *testing.T) {
+	if err := Available(); err != nil {
+		t.Skip("git not available")
+	}
+
+	dir := t.TempDir()
+	env := gitEnv()
+	if err := run(dir, env, true, nil, "init", "--initial-branch=main"); err != nil {
+		t.Fatal(err)
+	}
+	if err := run(dir, env, true, nil, "commit", "--allow-empty", "-m", "init"); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "dirty.txt"), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	v := false
+	disp := display.New(1, 1, display.DefaultTheme, &v)
+	err := Init{}.Run(Params{
+		Path: dir,
+		Ctx: &workspace.Context{
+			Env:    env,
+			Branch: "main",
+		},
+		Disp: disp,
+	})
+	if err == nil {
+		t.Fatal("expected dirty tree error")
+	}
+}

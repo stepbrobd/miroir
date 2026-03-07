@@ -1,6 +1,9 @@
 package main
 
 import (
+	"context"
+	"errors"
+	"os"
 	"path/filepath"
 
 	"github.com/adrg/xdg"
@@ -117,6 +120,9 @@ func main() {
 		flag.Usage = "Version for " + root.CommandPath()
 	}
 	if err := root.Execute(); err != nil {
+		if errors.Is(err, context.Canceled) {
+			os.Exit(0)
+		}
 		log.Fatal(err)
 	}
 }

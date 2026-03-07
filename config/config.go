@@ -155,6 +155,12 @@ type Config struct {
 }
 
 func Validate(cfg *Config) error {
+	if strings.TrimSpace(cfg.General.Home) == "" {
+		return fmt.Errorf("general.home must not be empty")
+	}
+	if strings.TrimSpace(cfg.Index.Database) == "" {
+		return fmt.Errorf("index.database must not be empty")
+	}
 	if cfg.General.Concurrency.Repo <= 0 {
 		return fmt.Errorf("general.concurrency.repo must be positive, got %d", cfg.General.Concurrency.Repo)
 	}
@@ -203,13 +209,32 @@ func ResolveForge(p Platform) *Forge {
 	return ForgeOfDomain(p.Domain)
 }
 
-// env var MIROIR_<NAME>_TOKEN beats the config field
+// env var MIROIR_<NORMALIZED_NAME>_TOKEN beats the config field
 func ResolveToken(name string, p Platform) *string {
-	v := "MIROIR_" + strings.ToUpper(name) + "_TOKEN"
+	v := tokenEnvVar(name)
 	if t, ok := os.LookupEnv(v); ok {
 		return &t
 	}
 	return p.Token
+}
+
+func tokenEnvVar(name string) string {
+	var b strings.Builder
+	b.WriteString("MIROIR_")
+	for _, r := range name {
+		switch {
+		case r >= 'a' && r <= 'z':
+			b.WriteRune(r - 'a' + 'A')
+		case r >= 'A' && r <= 'Z':
+			b.WriteRune(r)
+		case r >= '0' && r <= '9':
+			b.WriteRune(r)
+		default:
+			b.WriteByte('_')
+		}
+	}
+	b.WriteString("_TOKEN")
+	return b.String()
 }
 
 func Load(path string) (*Config, error) {

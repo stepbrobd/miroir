@@ -247,11 +247,15 @@ func TestCycleContextCanceledDuringFetchStopsLaterRepos(t *testing.T) {
 	mark := filepath.Join(tmp, "fetch-started")
 	wrapper := filepath.Join(binDir, "git")
 	script := fmt.Sprintf(`#!/bin/sh
-if [ "$1" = "fetch" ] && [ "$(basename "$PWD")" = "first.git" ]; then
+case "$(basename "$PWD")" in
+  .first.git.tmp-*)
+    if [ "$1" = "fetch" ]; then
   : > "$MIROIR_FETCH_MARK"
   trap 'exit 0' TERM INT
   while :; do sleep 1; done
-fi
+    fi
+    ;;
+esac
 exec "%s" "$@"
 `, realGit)
 	if err := os.WriteFile(wrapper, []byte(script), 0o755); err != nil {
@@ -306,6 +310,71 @@ exec "%s" "$@"
 	}
 	if got := shardRepoNames(t, db); len(got) != 0 {
 		t.Fatalf("expected canceled cycle to skip shard writes got %v", got)
+	}
+}
+
+func TestRunCancelDoesNotWaitForActiveIndex(t *testing.T) {
+	skipNoGit(t)
+	tmp := t.TempDir()
+	seedRepoWithFile(t, tmp, "hello.go", "package main\n")
+
+	home := filepath.Join(tmp, "repos")
+	db := filepath.Join(tmp, "shards")
+	if err := os.MkdirAll(home, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(db, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	started := make(chan struct{})
+	release := make(chan struct{})
+	finished := make(chan struct{})
+	oldIndexRepo := indexRepo
+	indexRepo = func(repoDir, indexDir, name string, branches []string) error {
+		close(started)
+		<-release
+		close(finished)
+		return nil
+	}
+	t.Cleanup(func() {
+		indexRepo = oldIndexRepo
+	})
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() {
+		done <- Run(ctx, &Cfg{
+			Listen:   ":0",
+			Database: db,
+			Interval: time.Hour,
+			Home:     home,
+			Include:  []string{tmp},
+		})
+	}()
+
+	select {
+	case <-started:
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out waiting for index start")
+	}
+
+	cancel()
+
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for shutdown")
+	}
+
+	close(release)
+	select {
+	case <-finished:
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out waiting for blocked index to finish")
 	}
 }
 

@@ -1,6 +1,7 @@
 package index
 
 import (
+	"context"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -165,6 +166,108 @@ func TestFetchPicksUpNewCommits(t *testing.T) {
 	cur := gitRev(t, path, "main")
 	if old == cur {
 		t.Error("fetch did not pick up new commit")
+	}
+}
+
+func TestFetchContextCanceledBootstrapCleansTempBare(t *testing.T) {
+	skipNoGit(t)
+	tmp := t.TempDir()
+	src := seedRepo(t, tmp)
+	dest := filepath.Join(tmp, "repos")
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	r := Repo{Name: "test", URI: src, Branch: "main"}
+	_, err := FetchContext(ctx, dest, r, true, nil)
+	if err == nil {
+		t.Fatal("expected canceled fetch error")
+	}
+	if _, err := os.Stat(filepath.Join(dest, "test.git")); !os.IsNotExist(err) {
+		t.Fatalf("expected no final bare repo path got %v", err)
+	}
+	entries, err := os.ReadDir(dest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 0 {
+		t.Fatalf("expected temp cleanup got %v", len(entries))
+	}
+}
+
+func TestFetchContextCanceledBootstrapCleansTempNonBare(t *testing.T) {
+	skipNoGit(t)
+	tmp := t.TempDir()
+	src := seedRepo(t, tmp)
+	dest := filepath.Join(tmp, "repos")
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	r := Repo{Name: "test", URI: src, Branch: "main"}
+	_, err := FetchContext(ctx, dest, r, false, nil)
+	if err == nil {
+		t.Fatal("expected canceled fetch error")
+	}
+	if _, err := os.Stat(filepath.Join(dest, "test")); !os.IsNotExist(err) {
+		t.Fatalf("expected no final worktree repo path got %v", err)
+	}
+	entries, err := os.ReadDir(dest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 0 {
+		t.Fatalf("expected temp cleanup got %v", len(entries))
+	}
+}
+
+func TestFetchNonBareRejectsFilePathBeforeGitRuns(t *testing.T) {
+	skipNoGit(t)
+	tmp := t.TempDir()
+	src := seedRepo(t, tmp)
+
+	cwdRepo := filepath.Join(tmp, "cwd")
+	if err := os.MkdirAll(cwdRepo, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	env := append(os.Environ(),
+		"GIT_AUTHOR_NAME=test", "GIT_AUTHOR_EMAIL=t@t",
+		"GIT_COMMITTER_NAME=test", "GIT_COMMITTER_EMAIL=t@t",
+	)
+	cmd := exec.Command("git", "init", "--initial-branch=main")
+	cmd.Dir = cwdRepo
+	cmd.Env = env
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("git init cwd repo: %s: %s", err, out)
+	}
+
+	dest := filepath.Join(tmp, "repos")
+	if err := os.MkdirAll(dest, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	blocker := filepath.Join(dest, "test")
+	if err := os.WriteFile(blocker, []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	oldDir, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.Chdir(oldDir)
+	if err := os.Chdir(cwdRepo); err != nil {
+		t.Fatal(err)
+	}
+
+	r := Repo{Name: "test", URI: src, Branch: "main"}
+	if _, err := Fetch(dest, r, false, nil); err == nil {
+		t.Fatal("expected file path error")
+	}
+
+	cmd = exec.Command("git", "remote", "get-url", "origin")
+	cmd.Dir = cwdRepo
+	if out, err := cmd.CombinedOutput(); err == nil {
+		t.Fatalf("expected cwd repo to stay untouched got %s", out)
 	}
 }
 

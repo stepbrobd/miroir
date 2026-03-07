@@ -58,12 +58,16 @@ func (r Repo) servedName() string {
 }
 
 func syncBareRepoContext(ctx context.Context, path string, r Repo, env CmdEnv) error {
-	if _, err := os.Stat(path); os.IsNotExist(err) {
-		if err := initManagedBareRepoContext(ctx, path, env); err != nil {
+	info, err := os.Stat(path)
+	if os.IsNotExist(err) {
+		if err := bootstrapBareRepoContext(ctx, path, r, env); err != nil {
 			return err
 		}
+		return nil
 	} else if err != nil {
 		return fmt.Errorf("stat %s: %w", path, err)
+	} else if !info.IsDir() {
+		return fmt.Errorf("%s is not a directory", path)
 	}
 
 	if err := ensureBareRepoContext(ctx, path, env); err != nil {
@@ -91,12 +95,16 @@ func syncBareRepoContext(ctx context.Context, path string, r Repo, env CmdEnv) e
 }
 
 func syncWorktreeRepoContext(ctx context.Context, path string, r Repo, env CmdEnv) error {
-	if _, err := os.Stat(path); os.IsNotExist(err) {
-		if err := cloneWorktreeRepoContext(ctx, path, r, env); err != nil {
+	info, err := os.Stat(path)
+	if os.IsNotExist(err) {
+		if err := bootstrapWorktreeRepoContext(ctx, path, r, env); err != nil {
 			return err
 		}
+		return nil
 	} else if err != nil {
 		return fmt.Errorf("stat %s: %w", path, err)
+	} else if !info.IsDir() {
+		return fmt.Errorf("%s is not a directory", path)
 	}
 
 	if err := ensureWorktreeRepoContext(ctx, path, env); err != nil {
@@ -116,6 +124,85 @@ func syncWorktreeRepoContext(ctx context.Context, path string, r Repo, env CmdEn
 	}
 	log.Info("fetching", "repo", filepath.Base(path))
 	return gitContext(ctx, path, env, "fetch", "--prune", "origin")
+}
+
+func bootstrapBareRepoContext(ctx context.Context, path string, r Repo, env CmdEnv) (err error) {
+	tmp, err := tempRepoDir(path)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if err == nil {
+			return
+		}
+		_ = os.RemoveAll(tmp)
+	}()
+
+	if err := initManagedBareRepoContext(ctx, tmp, env); err != nil {
+		return err
+	}
+	if err := ensureRemoteContext(ctx, tmp, env, "origin", r.URI); err != nil {
+		return err
+	}
+	if err := setZoektNameContext(ctx, tmp, env, r.servedName()); err != nil {
+		return err
+	}
+	if err := setWebMetadataContext(ctx, tmp, env, r.WebURL, r.WebURLType); err != nil {
+		return err
+	}
+	if err := setManagedMarkerContext(ctx, tmp, env); err != nil {
+		return err
+	}
+	if err := setFetchRefspecContext(ctx, tmp, env, bareOriginFetchRefspec); err != nil {
+		return err
+	}
+	if err := gitContext(ctx, tmp, env, "fetch", "--prune", "origin"); err != nil {
+		return err
+	}
+	if err := syncBareHeadsContext(ctx, tmp, r.Branch, env); err != nil {
+		return err
+	}
+	return os.Rename(tmp, path)
+}
+
+func bootstrapWorktreeRepoContext(ctx context.Context, path string, r Repo, env CmdEnv) (err error) {
+	tmp, err := tempRepoDir(path)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if err == nil {
+			return
+		}
+		_ = os.RemoveAll(tmp)
+	}()
+
+	if err := cloneWorktreeRepoContext(ctx, tmp, r, env); err != nil {
+		return err
+	}
+	if err := ensureWorktreeRepoContext(ctx, tmp, env); err != nil {
+		return err
+	}
+	if err := ensureRemoteContext(ctx, tmp, env, "origin", r.URI); err != nil {
+		return err
+	}
+	if err := setZoektNameContext(ctx, tmp, env, r.servedName()); err != nil {
+		return err
+	}
+	if err := setWebMetadataContext(ctx, tmp, env, r.WebURL, r.WebURLType); err != nil {
+		return err
+	}
+	if err := setManagedMarkerContext(ctx, tmp, env); err != nil {
+		return err
+	}
+	return os.Rename(tmp, path)
+}
+
+func tempRepoDir(path string) (string, error) {
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return "", err
+	}
+	return os.MkdirTemp(filepath.Dir(path), "."+filepath.Base(path)+".tmp-")
 }
 
 func initManagedBareRepoContext(ctx context.Context, path string, env CmdEnv) error {

@@ -64,8 +64,9 @@ func ResolveNames(names []string, home string, opts SelectOptions) ([]string, er
 			return nil, fmt.Errorf("getwd: %w", err)
 		}
 	}
+	cwd = canonicalPath(cwd)
 	for _, name := range names {
-		path := filepath.Join(home, name)
+		path := canonicalPath(filepath.Join(home, name))
 		if path == cwd || strings.HasPrefix(cwd, path+string(filepath.Separator)) {
 			return []string{name}, nil
 		}
@@ -115,4 +116,12 @@ func SyncNames(cfg *config.Config, opts SelectOptions) ([]string, error) {
 		}
 	}
 	return ResolveNames(names, home, opts)
+}
+
+func canonicalPath(path string) string {
+	path = filepath.Clean(path)
+	if resolved, err := filepath.EvalSymlinks(path); err == nil {
+		return resolved
+	}
+	return path
 }

@@ -171,18 +171,23 @@ func TestSelectTargetsByCwd(t *testing.T) {
 	nameFlag = ""
 	allFlag = false
 
-	// macOS /var -> /private/var symlink must be resolved for path matching
-	tmp, err := filepath.EvalSymlinks(t.TempDir())
-	if err != nil {
+	tmp := t.TempDir()
+	real := filepath.Join(tmp, "real")
+	link := filepath.Join(tmp, "link")
+	if err := os.MkdirAll(real, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	dir := filepath.Join(tmp, "ws", "alpha")
+	if err := os.Symlink(real, link); err != nil {
+		t.Fatal(err)
+	}
+
+	dir := filepath.Join(real, "ws", "alpha")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatal(err)
 	}
 
-	ctxs = map[string]*workspace.Context{dir: {}}
-	cfg = &config.Config{General: config.General{Home: filepath.Join(tmp, "ws")}}
+	ctxs = map[string]*workspace.Context{filepath.Join(link, "ws", "alpha"): {}}
+	cfg = &config.Config{General: config.General{Home: filepath.Join(link, "ws")}}
 
 	oldDir, _ := os.Getwd()
 	defer os.Chdir(oldDir)
@@ -192,8 +197,9 @@ func TestSelectTargetsByCwd(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(got) != 1 || got[0] != dir {
-		t.Errorf("got %v, want [%s]", got, dir)
+	want := filepath.Join(link, "ws", "alpha")
+	if len(got) != 1 || got[0] != want {
+		t.Errorf("got %v, want [%s]", got, want)
 	}
 }
 

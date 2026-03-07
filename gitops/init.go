@@ -1,6 +1,7 @@
 package gitops
 
 import (
+	"errors"
 	"fmt"
 	"os"
 )
@@ -28,8 +29,24 @@ func (Init) Run(p Params) error {
 			return err
 		}
 	} else {
-		if err := runContext(p.RunCtx, p.Path, p.Ctx.Env, true, nil, "remote"); err != nil {
+		if err := ensureRepo(p.Path); err != nil {
 			return err
+		}
+		dirty, err := isDirtyContext(p.RunCtx, p.Path, p.Ctx.Env)
+		if err != nil {
+			return err
+		}
+		if dirty && !p.Force {
+			msg := "dirty working tree, use --force to override"
+			p.Disp.ErrorRemote(p.Slot, j, fmt.Sprintf("error: %s", msg))
+			return errors.New(msg)
+		}
+		if p.Force {
+			info("cleaning untracked files...")
+			if err := runContext(p.RunCtx, p.Path, p.Ctx.Env, true, nil,
+				"clean", "-fd"); err != nil {
+				return err
+			}
 		}
 	}
 

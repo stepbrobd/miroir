@@ -68,6 +68,32 @@ domain = "a.com"
 	}
 }
 
+func TestValidateRejectsEmptyPaths(t *testing.T) {
+	_, err := Parse(`
+[general]
+home = ""
+
+[platform.a]
+origin = true
+domain = "a.com"
+`)
+	if err == nil {
+		t.Fatal("expected empty home validation error")
+	}
+
+	_, err = Parse(`
+[platform.a]
+origin = true
+domain = "a.com"
+
+[index]
+database = ""
+`)
+	if err == nil {
+		t.Fatal("expected empty database validation error")
+	}
+}
+
 func TestSimpleConfig(t *testing.T) {
 	toml := `
 [general]
@@ -266,6 +292,17 @@ func TestResolveToken(t *testing.T) {
 	got = ResolveToken("github", p)
 	if got == nil || *got != "env-token" {
 		t.Errorf("env token: got %v", got)
+	}
+}
+
+func TestResolveTokenNormalizesPlatformName(t *testing.T) {
+	t.Setenv("MIROIR_GITLAB_MAIN_TOKEN", "env-token")
+
+	tok := "config-token"
+	p := Platform{Token: &tok}
+	got := ResolveToken("gitlab-main", p)
+	if got == nil || *got != "env-token" {
+		t.Errorf("normalized env token: got %v", got)
 	}
 }
 

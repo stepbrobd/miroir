@@ -55,7 +55,7 @@ branch = "main"               # Per-repo branch override
 
 [repo.old-project]
 visibility = "private"
-archived = true               # Excluded from git ops, archived on forges via sync
+archived = true               # Excluded from git ops and archived on supporting forges via sync
 
 [index]
 listen = ":6070"              # HTTP listen address for search API
@@ -89,16 +89,18 @@ include = [                   # Extra directories of repos to index (one level d
 | `token`  |         | API token for forge operations                                             |
 
 Tokens can also be set via environment: `MIROIR_<PLATFORM_NAME>_TOKEN` (e.g.
-`MIROIR_GITHUB_TOKEN`).
+`MIROIR_GITHUB_TOKEN`). Platform names are uppercased and non-alphanumeric
+characters are replaced with `_`, so `gitlab-main` maps to
+`MIROIR_GITLAB_MAIN_TOKEN`.
 
 ### Repo
 
-| Field         | Default   | Description                                 |
-| ------------- | --------- | ------------------------------------------- |
-| `description` |           | Repo description synced to forges           |
-| `visibility`  | `private` | `public` or `private`                       |
-| `archived`    | `false`   | Skip in git ops; archive on forges via sync |
-| `branch`      |           | Per-repo branch override                    |
+| Field         | Default   | Description                                            |
+| ------------- | --------- | ------------------------------------------------------ |
+| `description` |           | Repo description synced to forges                      |
+| `visibility`  | `private` | `public` or `private`                                  |
+| `archived`    | `false`   | Skip in git ops; archive on supporting forges via sync |
+| `branch`      |           | Per-repo branch override                               |
 
 ### Index
 
@@ -139,7 +141,9 @@ miroir init -a                # Init all repos
 ```
 
 Creates the directory, initializes git, adds all named platform remotes plus
-`origin`, fetches, resets to `origin/<branch>`, and initializes submodules.
+`origin`, fetches, resets to `origin/<branch>`, and initializes submodules. When
+the repo already exists, `init` refuses to overwrite a dirty working tree unless
+you pass `-f`.
 
 **fetch** -- Fetch from all remotes (concurrent)
 
@@ -183,8 +187,8 @@ miroir sync -a
 ```
 
 Creates repos that don't exist, updates description/visibility on existing ones,
-and archives repos marked `archived = true`. Each forge API call has a 30-second
-timeout.
+and archives repos marked `archived = true` on forges that support archiving.
+Each forge API call has a 30-second timeout.
 
 **sweep** -- Remove archived and untracked repos from workspace
 

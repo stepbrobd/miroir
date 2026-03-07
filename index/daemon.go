@@ -35,6 +35,8 @@ type Cfg struct {
 	Repos []Repo
 }
 
+var indexRepo = IndexRepo
+
 // cfgFrom builds a daemon config with process env merged with config env
 func CfgFrom(c *config.Config) (*Cfg, error) {
 	home, err := workspace.ExpandHome(c.General.Home)
@@ -210,14 +212,17 @@ func Run(ctx context.Context, c *Cfg) error {
 		select {
 		case <-ctx.Done():
 			log.Info("shutting down")
-			cycleWg.Wait()
 			shut, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer cancel()
-			return httpSrv.Shutdown(shut)
+			err := httpSrv.Shutdown(shut)
+			if !waitForCycles(&cycleWg, 250*time.Millisecond) {
+				log.Info("shutdown continuing with active cycle")
+			}
+			return err
 		case err := <-errCh:
-			cycleWg.Wait()
 			// still shut down the server to release resources
 			httpSrv.Close()
+			waitForCycles(&cycleWg, 250*time.Millisecond)
 			return err
 		case <-ticker.C:
 			startCycle()
@@ -257,7 +262,7 @@ func cycleContext(ctx context.Context, c *Cfg) {
 			log.Error("fetch failed", "repo", r.Name, "err", err)
 			continue
 		}
-		if err := IndexRepo(p, c.Database, r.servedName(), nil); err != nil {
+		if err := indexRepo(p, c.Database, r.servedName(), nil); err != nil {
 			if ctx.Err() != nil {
 				return
 			}
@@ -288,7 +293,7 @@ func cycleContext(ctx context.Context, c *Cfg) {
 				if err := ctx.Err(); err != nil {
 					return
 				}
-				if err := IndexRepo(p, c.Database, "", nil); err != nil {
+				if err := indexRepo(p, c.Database, "", nil); err != nil {
 					if ctx.Err() != nil {
 						return
 					}
@@ -308,4 +313,18 @@ func cycleContext(ctx context.Context, c *Cfg) {
 	}
 
 	log.Info("cycle done", "repos", n, "elapsed", time.Since(start).Round(time.Millisecond))
+}
+
+func waitForCycles(wg *sync.WaitGroup, timeout time.Duration) bool {
+	done := make(chan struct{})
+	go func() {
+		wg.Wait()
+		close(done)
+	}()
+	select {
+	case <-done:
+		return true
+	case <-time.After(timeout):
+		return false
+	}
 }
