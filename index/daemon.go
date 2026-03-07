@@ -215,14 +215,15 @@ func Run(ctx context.Context, c *Cfg) error {
 			shut, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer cancel()
 			err := httpSrv.Shutdown(shut)
-			if !waitForCycles(&cycleWg, 250*time.Millisecond) {
-				log.Info("shutdown continuing with active cycle")
+			cycleWg.Wait()
+			if err != nil {
+				return err
 			}
-			return err
+			return ctx.Err()
 		case err := <-errCh:
 			// still shut down the server to release resources
 			httpSrv.Close()
-			waitForCycles(&cycleWg, 250*time.Millisecond)
+			cycleWg.Wait()
 			return err
 		case <-ticker.C:
 			startCycle()
@@ -313,18 +314,4 @@ func cycleContext(ctx context.Context, c *Cfg) {
 	}
 
 	log.Info("cycle done", "repos", n, "elapsed", time.Since(start).Round(time.Millisecond))
-}
-
-func waitForCycles(wg *sync.WaitGroup, timeout time.Duration) bool {
-	done := make(chan struct{})
-	go func() {
-		wg.Wait()
-		close(done)
-	}()
-	select {
-	case <-done:
-		return true
-	case <-time.After(timeout):
-		return false
-	}
 }

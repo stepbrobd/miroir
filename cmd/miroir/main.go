@@ -121,7 +121,7 @@ func main() {
 	}
 	if err := root.Execute(); err != nil {
 		if errors.Is(err, context.Canceled) {
-			os.Exit(0)
+			os.Exit(130)
 		}
 		log.Fatal(err)
 	}

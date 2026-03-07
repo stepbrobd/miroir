@@ -94,6 +94,21 @@ database = ""
 	}
 }
 
+func TestValidateRejectsTokenEnvVarCollision(t *testing.T) {
+	_, err := Parse(`
+[platform.gitlab-main]
+origin = true
+domain = "gitlab.com"
+
+[platform."gitlab.main"]
+origin = false
+domain = "gitlab.example.com"
+`)
+	if err == nil {
+		t.Fatal("expected token env var collision error")
+	}
+}
+
 func TestSimpleConfig(t *testing.T) {
 	toml := `
 [general]
@@ -303,6 +318,22 @@ func TestResolveTokenNormalizesPlatformName(t *testing.T) {
 	got := ResolveToken("gitlab-main", p)
 	if got == nil || *got != "env-token" {
 		t.Errorf("normalized env token: got %v", got)
+	}
+}
+
+func TestTokenEnvVarNormalizesPunctuation(t *testing.T) {
+	tests := []struct {
+		name string
+		want string
+	}{
+		{name: "gitlab-main", want: "MIROIR_GITLAB_MAIN_TOKEN"},
+		{name: "gitlab.main", want: "MIROIR_GITLAB_MAIN_TOKEN"},
+		{name: "GitLab/Main", want: "MIROIR_GITLAB_MAIN_TOKEN"},
+	}
+	for _, tt := range tests {
+		if got := tokenEnvVar(tt.name); got != tt.want {
+			t.Errorf("tokenEnvVar(%q): got %q want %q", tt.name, got, tt.want)
+		}
 	}
 }
 

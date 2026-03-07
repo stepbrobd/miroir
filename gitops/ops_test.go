@@ -210,3 +210,96 @@ func TestInitDirtyExistingRepoRequiresForce(t *testing.T) {
 		t.Fatal("expected dirty tree error")
 	}
 }
+
+func TestInitForceResetsTrackedAndUntrackedChanges(t *testing.T) {
+	if err := Available(); err != nil {
+		t.Skip("git not available")
+	}
+
+	tmp := t.TempDir()
+	env := gitEnv()
+	remote := filepath.Join(tmp, "remote")
+	local := filepath.Join(tmp, "local")
+
+	if err := os.MkdirAll(remote, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := run(remote, env, true, nil, "init", "--initial-branch=main"); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(remote, "tracked.txt"), []byte("initial\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := run(remote, env, true, nil, "add", "tracked.txt"); err != nil {
+		t.Fatal(err)
+	}
+	if err := run(remote, env, true, nil, "commit", "-m", "init"); err != nil {
+		t.Fatal(err)
+	}
+	if err := run(tmp, env, true, nil, "clone", remote, local); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := os.WriteFile(filepath.Join(remote, "tracked.txt"), []byte("remote\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := run(remote, env, true, nil, "add", "tracked.txt"); err != nil {
+		t.Fatal(err)
+	}
+	if err := run(remote, env, true, nil, "commit", "-m", "remote update"); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := os.WriteFile(filepath.Join(local, "tracked.txt"), []byte("local dirty\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(local, "untracked.txt"), []byte("junk\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	v := false
+	disp := display.New(1, 1, display.DefaultTheme, &v)
+	err := Init{}.Run(Params{
+		Path:  local,
+		Force: true,
+		Ctx: &workspace.Context{
+			Env:    env,
+			Branch: "main",
+			Fetch:  []workspace.Remote{{Name: "origin", GitName: "origin", URI: remote}},
+			Push:   []workspace.Remote{{Name: "origin", GitName: "origin", URI: remote}},
+		},
+		Disp: disp,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if got, err := os.ReadFile(filepath.Join(local, "tracked.txt")); err != nil {
+		t.Fatal(err)
+	} else if string(got) != "remote\n" {
+		t.Fatalf("tracked.txt = %q want %q", got, "remote\n")
+	}
+	if _, err := os.Stat(filepath.Join(local, "untracked.txt")); !os.IsNotExist(err) {
+		t.Fatalf("expected untracked file removed got %v", err)
+	}
+
+	status, err := exec.Command("git", "-C", local, "status", "--porcelain").Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(status) != 0 {
+		t.Fatalf("expected clean worktree got %s", status)
+	}
+
+	head, err := exec.Command("git", "-C", local, "rev-parse", "HEAD").Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	want, err := exec.Command("git", "-C", remote, "rev-parse", "HEAD").Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(head) != string(want) {
+		t.Fatalf("local head = %s want %s", head, want)
+	}
+}

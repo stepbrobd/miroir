@@ -77,6 +77,9 @@ include = [                   # Extra directories of repos to index (one level d
 | `concurrency.remote` | `0`      | Max concurrent remote ops per repo (0 = no limit)                 |
 | `env`                |          | Extra environment variables added unless already set in the shell |
 
+Managed repos are a flat set of direct children under `general.home`. Nested
+repo names such as `group/repo` are not supported.
+
 ### Platform
 
 | Field    | Default | Description                                                                |
@@ -91,7 +94,7 @@ include = [                   # Extra directories of repos to index (one level d
 Tokens can also be set via environment: `MIROIR_<PLATFORM_NAME>_TOKEN` (e.g.
 `MIROIR_GITHUB_TOKEN`). Platform names are uppercased and non-alphanumeric
 characters are replaced with `_`, so `gitlab-main` maps to
-`MIROIR_GITLAB_MAIN_TOKEN`.
+`MIROIR_GITLAB_MAIN_TOKEN`. Platform names must normalize uniquely.
 
 ### Repo
 
@@ -236,8 +239,9 @@ checked out `HEAD`.
 Included repos from `index.include` are never fetched or deleted by miroir. Only
 their shards are removed if the source repo disappears from discovery.
 
-The searcher hot-reloads index shards -- no restart needed after re-indexing.
-Graceful shutdown on SIGINT/SIGTERM.
+The searcher hot-reloads index shards -- no restart needed after re-indexing. On
+SIGINT/SIGTERM, miroir stops serving immediately, cancels the current cycle, and
+waits for any in-flight fetch or index step to finish before exiting.
 
 Compatible with any zoekt frontend (e.g.
 [neogrok](https://github.com/isker/neogrok)):
@@ -294,3 +298,17 @@ per-remote progress. When piped, it falls back to structured log output. The
 `index` command always uses structured logging (no TTY mode). When a git command
 produces no stdout/stderr for a remote, miroir renders `[no output]` to preserve
 the output row ordering.
+
+## Development
+
+Run `nix fmt` before sending changes. It is the canonical repo check and runs
+the full verification suite, not just formatters:
+
+- `gomod2nix`
+- `go fix`
+- `go fmt`
+- `go test -race ./...`
+- `go vet ./...`
+- `nixpkgs-fmt`
+- `taplo format`
+- `staticcheck ./...`

@@ -2,6 +2,7 @@ package index
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -308,12 +309,17 @@ exec "%s" "$@"
 	if _, err := os.Stat(filepath.Join(home, "second.git")); !os.IsNotExist(err) {
 		t.Fatalf("expected second repo not to start got %v", err)
 	}
+	if entries, err := os.ReadDir(home); err != nil {
+		t.Fatal(err)
+	} else if len(entries) != 0 {
+		t.Fatalf("expected canceled cycle to clean temp repos got %v", len(entries))
+	}
 	if got := shardRepoNames(t, db); len(got) != 0 {
 		t.Fatalf("expected canceled cycle to skip shard writes got %v", got)
 	}
 }
 
-func TestRunCancelDoesNotWaitForActiveIndex(t *testing.T) {
+func TestRunCancelWaitsForActiveIndex(t *testing.T) {
 	skipNoGit(t)
 	tmp := t.TempDir()
 	seedRepoWithFile(t, tmp, "hello.go", "package main\n")
@@ -363,11 +369,8 @@ func TestRunCancelDoesNotWaitForActiveIndex(t *testing.T) {
 
 	select {
 	case err := <-done:
-		if err != nil {
-			t.Fatal(err)
-		}
-	case <-time.After(2 * time.Second):
-		t.Fatal("timed out waiting for shutdown")
+		t.Fatalf("expected shutdown to wait for active index got %v", err)
+	case <-time.After(250 * time.Millisecond):
 	}
 
 	close(release)
@@ -375,6 +378,15 @@ func TestRunCancelDoesNotWaitForActiveIndex(t *testing.T) {
 	case <-finished:
 	case <-time.After(5 * time.Second):
 		t.Fatal("timed out waiting for blocked index to finish")
+	}
+
+	select {
+	case err := <-done:
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("got %v want context canceled", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out waiting for shutdown")
 	}
 }
 

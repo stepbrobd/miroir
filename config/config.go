@@ -168,6 +168,7 @@ func Validate(cfg *Config) error {
 		return fmt.Errorf("general.concurrency.remote must be non-negative, got %d", cfg.General.Concurrency.Remote)
 	}
 	origins := 0
+	tokenVars := make(map[string]string, len(cfg.Platform))
 	for name, platform := range cfg.Platform {
 		if platform.Origin {
 			origins++
@@ -175,6 +176,11 @@ func Validate(cfg *Config) error {
 		if platform.Domain == "" {
 			return fmt.Errorf("platform %q: domain is required", name)
 		}
+		tokenVar := tokenEnvVar(name)
+		if prev, ok := tokenVars[tokenVar]; ok {
+			return fmt.Errorf("platform %q and %q both map to %s", prev, name, tokenVar)
+		}
+		tokenVars[tokenVar] = name
 	}
 	if origins != 1 {
 		return fmt.Errorf("expected exactly one platform with origin = true, got %d", origins)

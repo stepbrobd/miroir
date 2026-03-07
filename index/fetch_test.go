@@ -2,6 +2,7 @@ package index
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -195,6 +196,40 @@ func TestFetchContextCanceledBootstrapCleansTempBare(t *testing.T) {
 	}
 }
 
+func TestFetchContextCanceledDuringBootstrapFetchCleansTempBare(t *testing.T) {
+	skipNoGit(t)
+	tmp := t.TempDir()
+	src := seedRepo(t, tmp)
+	dest := filepath.Join(tmp, "repos")
+	mark := filepath.Join(tmp, "fetch-started")
+
+	installBlockingGitWrapper(t, tmp, ".test.git.tmp-*", "fetch", mark)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() {
+		_, err := FetchContext(ctx, dest, Repo{Name: "test", URI: src, Branch: "main"}, true, nil)
+		done <- err
+	}()
+
+	waitForFile(t, mark)
+	cancel()
+
+	if err := <-done; err == nil {
+		t.Fatal("expected canceled fetch error")
+	}
+	if _, err := os.Stat(filepath.Join(dest, "test.git")); !os.IsNotExist(err) {
+		t.Fatalf("expected no final bare repo path got %v", err)
+	}
+	entries, err := os.ReadDir(dest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 0 {
+		t.Fatalf("expected temp cleanup got %v", len(entries))
+	}
+}
+
 func TestFetchContextCanceledBootstrapCleansTempNonBare(t *testing.T) {
 	skipNoGit(t)
 	tmp := t.TempDir()
@@ -218,6 +253,90 @@ func TestFetchContextCanceledBootstrapCleansTempNonBare(t *testing.T) {
 	}
 	if len(entries) != 0 {
 		t.Fatalf("expected temp cleanup got %v", len(entries))
+	}
+}
+
+func TestFetchContextCanceledDuringBootstrapCloneCleansTempNonBare(t *testing.T) {
+	skipNoGit(t)
+	tmp := t.TempDir()
+	src := seedRepo(t, tmp)
+	dest := filepath.Join(tmp, "repos")
+	mark := filepath.Join(tmp, "clone-started")
+
+	installBlockingGitWrapper(t, tmp, ".test.tmp-*", "clone", mark)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() {
+		_, err := FetchContext(ctx, dest, Repo{Name: "test", URI: src, Branch: "main"}, false, nil)
+		done <- err
+	}()
+
+	waitForFile(t, mark)
+	cancel()
+
+	if err := <-done; err == nil {
+		t.Fatal("expected canceled clone error")
+	}
+	if _, err := os.Stat(filepath.Join(dest, "test")); !os.IsNotExist(err) {
+		t.Fatalf("expected no final worktree repo path got %v", err)
+	}
+	entries, err := os.ReadDir(dest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 0 {
+		t.Fatalf("expected temp cleanup got %v", len(entries))
+	}
+}
+
+func TestFetchBareRejectsFilePathBeforeGitRuns(t *testing.T) {
+	skipNoGit(t)
+	tmp := t.TempDir()
+	src := seedRepo(t, tmp)
+
+	cwdRepo := filepath.Join(tmp, "cwd")
+	if err := os.MkdirAll(cwdRepo, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	env := append(os.Environ(),
+		"GIT_AUTHOR_NAME=test", "GIT_AUTHOR_EMAIL=t@t",
+		"GIT_COMMITTER_NAME=test", "GIT_COMMITTER_EMAIL=t@t",
+	)
+	cmd := exec.Command("git", "init", "--initial-branch=main")
+	cmd.Dir = cwdRepo
+	cmd.Env = env
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("git init cwd repo: %s: %s", err, out)
+	}
+
+	dest := filepath.Join(tmp, "repos")
+	if err := os.MkdirAll(dest, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	blocker := filepath.Join(dest, "test.git")
+	if err := os.WriteFile(blocker, []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	oldDir, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.Chdir(oldDir)
+	if err := os.Chdir(cwdRepo); err != nil {
+		t.Fatal(err)
+	}
+
+	r := Repo{Name: "test", URI: src, Branch: "main"}
+	if _, err := Fetch(dest, r, true, nil); err == nil {
+		t.Fatal("expected file path error")
+	}
+
+	cmd = exec.Command("git", "remote", "get-url", "origin")
+	cmd.Dir = cwdRepo
+	if out, err := cmd.CombinedOutput(); err == nil {
+		t.Fatalf("expected cwd repo to stay untouched got %s", out)
 	}
 }
 
@@ -269,6 +388,37 @@ func TestFetchNonBareRejectsFilePathBeforeGitRuns(t *testing.T) {
 	if out, err := cmd.CombinedOutput(); err == nil {
 		t.Fatalf("expected cwd repo to stay untouched got %s", out)
 	}
+}
+
+func installBlockingGitWrapper(t *testing.T, tmp, match, verb, mark string) {
+	t.Helper()
+
+	realGit, err := exec.LookPath("git")
+	if err != nil {
+		t.Fatal(err)
+	}
+	binDir := filepath.Join(tmp, "bin")
+	if err := os.MkdirAll(binDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	wrapper := filepath.Join(binDir, "git")
+	script := fmt.Sprintf(`#!/bin/sh
+case "$(basename "$PWD")" in
+  %s)
+    if [ "$1" = "%s" ]; then
+      : > "$MIROIR_FETCH_MARK"
+      trap 'exit 0' TERM INT
+      while :; do sleep 1; done
+    fi
+    ;;
+esac
+exec "%s" "$@"
+`, match, verb, realGit)
+	if err := os.WriteFile(wrapper, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("MIROIR_FETCH_MARK", mark)
+	t.Setenv("PATH", binDir+":"+os.Getenv("PATH"))
 }
 
 func gitRev(t *testing.T, dir, ref string) string {

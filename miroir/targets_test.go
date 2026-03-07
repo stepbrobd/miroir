@@ -1,6 +1,7 @@
 package miroir
 
 import (
+	"os"
 	"path/filepath"
 	"testing"
 
@@ -40,5 +41,27 @@ func TestSyncNamesRejectsNestedConfigName(t *testing.T) {
 	_, err := SyncNames(cfg, SelectOptions{All: true})
 	if err == nil {
 		t.Fatal("expected nested config name error")
+	}
+}
+
+func TestResolveNamesMatchesSymlinkedWorkspaceCwd(t *testing.T) {
+	tmp := t.TempDir()
+	real := filepath.Join(tmp, "real")
+	link := filepath.Join(tmp, "link")
+	if err := os.MkdirAll(filepath.Join(real, "ws", "alpha"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(real, link); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := ResolveNames([]string{"alpha"}, filepath.Join(link, "ws"), SelectOptions{
+		Cwd: filepath.Join(real, "ws", "alpha"),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0] != "alpha" {
+		t.Fatalf("got %v want [alpha]", got)
 	}
 }
