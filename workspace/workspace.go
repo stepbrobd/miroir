@@ -1,4 +1,4 @@
-// Package workspace models managed repository layout and execution context assembly.
+// package workspace models managed repository layout and execution context assembly
 package workspace
 
 import (
@@ -12,14 +12,14 @@ import (
 	"ysun.co/miroir/config"
 )
 
-// Remote describes a named git remote URI.
+// remote describes a named git remote URI
 type Remote struct {
 	Name    string
 	GitName string
 	URI     string
 }
 
-// Context contains derived git execution settings for one managed repository.
+// context holds derived git execution settings for one managed repository
 type Context struct {
 	Env    []string
 	Branch string
@@ -27,7 +27,7 @@ type Context struct {
 	Push   []Remote
 }
 
-// MakeURI builds a git remote URI for the configured forge access mode.
+// makeURI builds a git remote URI for the configured forge access mode
 func MakeURI(access config.Access, domain, user, repo string) string {
 	switch access {
 	case config.SSH:
@@ -53,7 +53,7 @@ func home() (string, error) {
 }
 
 // expands leading ~/ to $HOME
-// ExpandHome expands a leading ~/ prefix using $HOME.
+// expandHome expands a leading ~/ prefix using $HOME
 func ExpandHome(path string) (string, error) {
 	if path == "~" {
 		return home()
@@ -122,7 +122,7 @@ func envSlice(m map[string]string) []string {
 	return s
 }
 
-// MakeAll builds execution contexts for all non-archived managed repositories.
+// makeAll builds execution contexts for all non-archived managed repositories
 func MakeAll(cfg *config.Config) (map[string]*Context, error) {
 	h, err := ExpandHome(cfg.General.Home)
 	if err != nil {

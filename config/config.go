@@ -1,4 +1,4 @@
-// Package config defines miroir configuration types and parsing helpers.
+// package config defines miroir configuration types and parsing helpers
 package config
 
 import (
@@ -176,7 +176,7 @@ func Validate(cfg *Config) error {
 	return nil
 }
 
-// nil if domain is not a known forge
+// returns nil if the domain is not a known forge
 func ForgeOfDomain(domain string) *Forge {
 	d := strings.ToLower(domain)
 	var f Forge
@@ -195,7 +195,7 @@ func ForgeOfDomain(domain string) *Forge {
 	return &f
 }
 
-// explicit field takes precedence over domain auto-detect
+// an explicit field beats domain auto-detect
 func ResolveForge(p Platform) *Forge {
 	if p.Forge != nil {
 		return p.Forge
@@ -203,7 +203,7 @@ func ResolveForge(p Platform) *Forge {
 	return ForgeOfDomain(p.Domain)
 }
 
-// MIROIR_<NAME>_TOKEN env takes precedence over config field
+// env var MIROIR_<NAME>_TOKEN beats the config field
 func ResolveToken(name string, p Platform) *string {
 	v := "MIROIR_" + strings.ToUpper(name) + "_TOKEN"
 	if t, ok := os.LookupEnv(v); ok {

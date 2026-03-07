@@ -15,11 +15,11 @@ type Meta struct {
 	Archived bool
 }
 
-// Forge abstracts forge CRUD operations
-// Create must return ErrExists if the repo already exists
-// Archive may return ErrUnsupported on forges without archive API
-// List returns all repos owned by the authenticated user
-// Sync is create-or-update with archive handling
+// forge abstracts forge CRUD operations
+// create returns ErrExists if the repo already exists
+// archive may return ErrUnsupported on forges without archive API
+// list returns all repos owned by the authenticated user
+// sync is create-or-update with archive handling
 type Forge interface {
 	Create(ctx context.Context, user string, m Meta) error
 	Update(ctx context.Context, user string, m Meta) error

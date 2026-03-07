@@ -13,7 +13,7 @@ import (
 	"github.com/charmbracelet/log"
 )
 
-// Repo represents a managed repo to keep updated
+// repo describes a managed repo to keep updated
 type Repo struct {
 	Name   string
 	URI    string // origin URI
@@ -24,7 +24,7 @@ type CmdEnv []string
 
 const bareOriginFetchRefspec = "+refs/heads/*:refs/remotes/origin/*"
 
-// Fetch clones (if missing) or fetches (if present) a managed repo
+// fetch clones or fetches a managed repo
 // dir is the parent directory, bare controls clone mode
 // returns the full path to the repo on disk
 func Fetch(dir string, r Repo, bare bool, env CmdEnv) (string, error) {

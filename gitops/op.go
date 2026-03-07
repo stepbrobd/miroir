@@ -1,4 +1,4 @@
-package git
+package gitops
 
 import (
 	"ysun.co/miroir/workspace"
@@ -15,8 +15,8 @@ type Reporter interface {
 	Finish()
 }
 
-// Remotes returns display lines needed per repo slot:
-// 0 = exec (sequential), 1 = origin only, n = all remotes
+// remotes returns the number of display lines needed per repo slot
+// 0 = exec sequentially 1 = origin only n = all remotes
 type Op interface {
 	Remotes(n int) int
 	Run(p Params) error

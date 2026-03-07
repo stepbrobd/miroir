@@ -1,4 +1,4 @@
-// Package miroir exposes high-level orchestration for running miroir workflows.
+// package miroir contains high-level orchestration for miroir workflows
 package miroir
 
 import (
@@ -13,7 +13,7 @@ import (
 	"ysun.co/miroir/workspace"
 )
 
-// RunOptions configures a batch git operation run.
+// runOptions configures a batch git operation run
 type RunOptions struct {
 	Targets           []string
 	Contexts          map[string]*workspace.Context
@@ -22,7 +22,7 @@ type RunOptions struct {
 	RemoteConcurrency int
 	Force             bool
 	Args              []string
-	Reporter          git.Reporter
+	Reporter          gitops.Reporter
 }
 
 type repoErr struct {
@@ -37,8 +37,8 @@ func reportRepoErrors(errs []repoErr) error {
 	return fmt.Errorf("%d operation(s) failed", len(errs))
 }
 
-// RunGitOp runs a git operation across the selected target repositories.
-func RunGitOp(op git.Op, opts RunOptions) error {
+// runGitOp runs a git operation across the selected target repositories
+func RunGitOp(op gitops.Op, opts RunOptions) error {
 	nr := op.Remotes(opts.PlatformCount)
 
 	var errs []repoErr
@@ -52,7 +52,7 @@ func RunGitOp(op git.Op, opts RunOptions) error {
 	if nr == 0 {
 		sem := make(chan struct{}, 1)
 		for _, target := range opts.Targets {
-			err := op.Run(git.Params{
+			err := op.Run(gitops.Params{
 				Path: target, Ctx: opts.Contexts[target], Disp: opts.Reporter,
 				Slot: 0, Sem: sem, Force: opts.Force, Args: opts.Args,
 			})
@@ -86,7 +86,7 @@ func RunGitOp(op git.Op, opts RunOptions) error {
 				defer func() { pool <- slot }()
 				opts.Reporter.Clear(slot)
 
-				err := op.Run(git.Params{
+				err := op.Run(gitops.Params{
 					Path: target, Ctx: opts.Contexts[target], Disp: opts.Reporter,
 					Slot: slot, Sem: sem, Force: opts.Force, Args: opts.Args,
 				})
@@ -113,8 +113,8 @@ func min(a, b int) int {
 	return b
 }
 
-// SelectRunOptions builds RunOptions from config, targets, and a reporter.
-func SelectRunOptions(cfg *config.Config, targets []string, ctxs map[string]*workspace.Context, reporter git.Reporter, force bool, args []string) RunOptions {
+// selectRunOptions builds runOptions from config targets and a reporter
+func SelectRunOptions(cfg *config.Config, targets []string, ctxs map[string]*workspace.Context, reporter gitops.Reporter, force bool, args []string) RunOptions {
 	return RunOptions{
 		Targets:           targets,
 		Contexts:          ctxs,

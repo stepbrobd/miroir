@@ -5,7 +5,7 @@ import (
 	"sync"
 	"testing"
 
-	git "ysun.co/miroir/gitops"
+	"ysun.co/miroir/gitops"
 	"ysun.co/miroir/workspace"
 )
 
@@ -44,16 +44,16 @@ func (f *fakeReporter) Finish() {
 
 type fakeOp struct {
 	remotes int
-	run     func(p git.Params) error
+	run     func(p gitops.Params) error
 }
 
-func (f fakeOp) Remotes(_ int) int      { return f.remotes }
-func (f fakeOp) Run(p git.Params) error { return f.run(p) }
+func (f fakeOp) Remotes(_ int) int         { return f.remotes }
+func (f fakeOp) Run(p gitops.Params) error { return f.run(p) }
 
 func TestRunGitOpSequentialSuccess(t *testing.T) {
 	reporter := &fakeReporter{}
 	ctxs := map[string]*workspace.Context{"/tmp/a": {}}
-	op := fakeOp{remotes: 0, run: func(p git.Params) error { return nil }}
+	op := fakeOp{remotes: 0, run: func(p gitops.Params) error { return nil }}
 	err := RunGitOp(op, RunOptions{Targets: []string{"/tmp/a"}, Contexts: ctxs, PlatformCount: 1, RepoConcurrency: 1, Reporter: reporter})
 	if err != nil {
 		t.Fatal(err)
@@ -66,7 +66,7 @@ func TestRunGitOpSequentialSuccess(t *testing.T) {
 func TestRunGitOpParallelFailure(t *testing.T) {
 	reporter := &fakeReporter{}
 	ctxs := map[string]*workspace.Context{"/tmp/a": {}, "/tmp/b": {}}
-	op := fakeOp{remotes: 1, run: func(p git.Params) error {
+	op := fakeOp{remotes: 1, run: func(p gitops.Params) error {
 		if p.Path == "/tmp/b" {
 			return errors.New("boom")
 		}
@@ -87,7 +87,7 @@ func TestRunGitOpParallelFailure(t *testing.T) {
 func TestRunGitOpSequentialFailureDoesNotReportRepoError(t *testing.T) {
 	reporter := &fakeReporter{}
 	ctxs := map[string]*workspace.Context{"/tmp/a": {}}
-	op := fakeOp{remotes: 0, run: func(p git.Params) error {
+	op := fakeOp{remotes: 0, run: func(p gitops.Params) error {
 		return errors.New("boom")
 	}}
 	err := RunGitOp(op, RunOptions{

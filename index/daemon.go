@@ -20,7 +20,7 @@ import (
 	"ysun.co/miroir/workspace"
 )
 
-// Cfg holds resolved daemon configuration
+// cfg holds resolved daemon configuration
 type Cfg struct {
 	Listen   string
 	Database string // absolute path to shard dir
@@ -34,7 +34,7 @@ type Cfg struct {
 	Repos []Repo
 }
 
-// CfgFrom builds a daemon config with process env merged with config env.
+// cfgFrom builds a daemon config with process env merged with config env
 func CfgFrom(c *config.Config) (*Cfg, error) {
 	home, err := workspace.ExpandHome(c.General.Home)
 	if err != nil {
@@ -107,7 +107,7 @@ func mergeEnv(extra map[string]string) CmdEnv {
 	return CmdEnv(merged)
 }
 
-// Run starts the daemon, blocks until ctx is cancelled
+// run starts the daemon and blocks until ctx is cancelled
 func Run(ctx context.Context, c *Cfg) error {
 	if err := os.MkdirAll(c.Database, 0o755); err != nil {
 		return fmt.Errorf("create database dir: %w", err)

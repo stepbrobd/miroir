@@ -9,7 +9,7 @@ import (
 	zoektindex "github.com/sourcegraph/zoekt/index"
 )
 
-// IndexRepo indexes a single git repo into the given shard directory
+// indexRepo indexes a single git repo into the given shard directory
 // branches defaults to ["HEAD"] if empty
 func IndexRepo(repoDir, indexDir, name string, branches []string) error {
 	if len(branches) == 0 {

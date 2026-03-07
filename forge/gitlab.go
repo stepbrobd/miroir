@@ -110,7 +110,7 @@ func (g *glForge) List(ctx context.Context, _ string) ([]string, error) {
 	return names, nil
 }
 
-// Update does not set Archived; gitlab requires a separate Archive call
+// update does not set archived so gitlab needs a separate archive call
 func (g *glForge) Sync(ctx context.Context, user string, m Meta) error {
 	err := g.Create(ctx, user, m)
 	if err == nil {

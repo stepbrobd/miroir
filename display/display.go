@@ -1,4 +1,4 @@
-// Package display provides the default terminal and log-based reporter for miroir.
+// package display provides the default terminal and log-based reporter for miroir
 package display
 
 import (
@@ -32,8 +32,8 @@ type line struct {
 
 const outputPlaceholder = "[no output]"
 
-// Display renders a live-updating progress grid in TTY mode
-// using direct ANSI escape codes, or structured log in non-TTY mode.
+// display renders a live-updating progress grid in TTY mode
+// using direct ANSI escape codes or structured log in non-TTY mode
 type Display struct {
 	tty    bool
 	mu     sync.Mutex
@@ -46,8 +46,8 @@ type Display struct {
 	log    *log.Logger
 }
 
-// direct ANSI when stdout is a TTY, charm log otherwise.
-// ttyOverride forces the mode when non-nil.
+// direct ANSI when stdout is a TTY and charm log otherwise
+// ttyOverride forces the mode when non-nil
 func New(repos, remotes int, th Theme, ttyOverride *bool) *Display {
 	tty := term.IsTerminal(int(os.Stdout.Fd()))
 	if ttyOverride != nil {

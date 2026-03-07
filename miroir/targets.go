@@ -1,4 +1,4 @@
-// Package miroir exposes high-level orchestration for running miroir workflows.
+// package miroir contains high-level orchestration for miroir workflows
 package miroir
 
 import (
@@ -13,14 +13,14 @@ import (
 	"ysun.co/miroir/workspace"
 )
 
-// SelectOptions controls repo target selection.
+// selectOptions controls repo target selection
 type SelectOptions struct {
 	Name string
 	All  bool
 	Cwd  string
 }
 
-// FlatNames validates that paths are direct children of home and returns their names.
+// flatNames validates that paths are direct children of home and returns their names
 func FlatNames(paths []string, home string) ([]string, error) {
 	names := make([]string, 0, len(paths))
 	seen := make(map[string]struct{}, len(paths))
@@ -45,7 +45,7 @@ func FlatNames(paths []string, home string) ([]string, error) {
 	return names, nil
 }
 
-// ResolveNames picks repo names from candidates using name/all/cwd selection rules.
+// resolveNames picks repo names from candidates using name all and cwd selection rules
 func ResolveNames(names []string, home string, opts SelectOptions) ([]string, error) {
 	if opts.Name != "" {
 		if !slices.Contains(names, opts.Name) {
@@ -73,7 +73,7 @@ func ResolveNames(names []string, home string, opts SelectOptions) ([]string, er
 	return nil, fmt.Errorf("not a managed repository (cwd: %s)", cwd)
 }
 
-// SelectTargets resolves selected managed repo paths from config and contexts.
+// selectTargets resolves selected managed repo paths from config and contexts
 func SelectTargets(cfg *config.Config, ctxs map[string]*workspace.Context, opts SelectOptions) ([]string, error) {
 	home, err := workspace.ExpandHome(cfg.General.Home)
 	if err != nil {
@@ -94,7 +94,7 @@ func SelectTargets(cfg *config.Config, ctxs map[string]*workspace.Context, opts 
 	return paths, nil
 }
 
-// SyncNames resolves selected repo names for sync, including archived config entries.
+// syncNames resolves selected repo names for sync including archived config entries
 func SyncNames(cfg *config.Config, opts SelectOptions) ([]string, error) {
 	home, err := workspace.ExpandHome(cfg.General.Home)
 	if err != nil {

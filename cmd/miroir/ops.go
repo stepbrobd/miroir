@@ -18,7 +18,7 @@ import (
 	"ysun.co/miroir/workspace"
 )
 
-func gitCmd(use, short string, op git.Op) *cobra.Command {
+func gitCmd(use, short string, op gitops.Op) *cobra.Command {
 	return &cobra.Command{
 		Use:               use,
 		Short:             short,
@@ -36,7 +36,7 @@ func init() {
 		PersistentPreRunE: resolveTargets,
 		Args:              cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runOn(git.Exec{}, forceFlag, args)
+			return runOn(gitops.Exec{}, forceFlag, args)
 		},
 	}
 
@@ -68,10 +68,10 @@ func init() {
 	}
 
 	root.AddCommand(
-		gitCmd("init", "Initialize repo(s)", git.Init{}),
-		gitCmd("fetch", "Fetch from all remotes", git.Fetch{}),
-		gitCmd("pull", "Pull from origin", git.Pull{}),
-		gitCmd("push", "Push to all remotes", git.Push{}),
+		gitCmd("init", "Initialize repo(s)", gitops.Init{}),
+		gitCmd("fetch", "Fetch from all remotes", gitops.Fetch{}),
+		gitCmd("pull", "Pull from origin", gitops.Pull{}),
+		gitCmd("push", "Push to all remotes", gitops.Push{}),
 		execCmd,
 		syncCmd,
 		sweepCmd,
@@ -79,7 +79,7 @@ func init() {
 	)
 }
 
-func runOn(op git.Op, force bool, extra []string) error {
+func runOn(op gitops.Op, force bool, extra []string) error {
 	disp := display.New(min(cfg.General.Concurrency.Repo, max(1, len(targets))), op.Remotes(len(cfg.Platform)), display.DefaultTheme, ttyOverride())
 	return miroir.RunGitOp(op, miroir.SelectRunOptions(cfg, targets, ctxs, disp, force, extra))
 }

@@ -1,4 +1,4 @@
-// Package miroir exposes high-level orchestration for running miroir workflows.
+// package miroir contains high-level orchestration for miroir workflows
 package miroir
 
 import (
@@ -13,7 +13,7 @@ import (
 
 	"ysun.co/miroir/config"
 	"ysun.co/miroir/forge"
-	git "ysun.co/miroir/gitops"
+	"ysun.co/miroir/gitops"
 )
 
 const syncTimeout = 30 * time.Second
@@ -36,7 +36,7 @@ func reportRepoRemoteErrors(errs []repoRemoteErr) error {
 	return fmt.Errorf("%d repo(s) failed to sync", len(errs))
 }
 
-func syncRepo(cfg *config.Config, disp git.Reporter, slot int, sem chan struct{}, name string) []remoteErr {
+func syncRepo(cfg *config.Config, disp gitops.Reporter, slot int, sem chan struct{}, name string) []remoteErr {
 	repo, ok := cfg.Repo[name]
 	if !ok {
 		disp.Repo(slot, fmt.Sprintf("%s :: sync :: no repo config", name))
@@ -107,8 +107,8 @@ func syncRepo(cfg *config.Config, disp git.Reporter, slot int, sem chan struct{}
 	return errs
 }
 
-// RunSync syncs repo metadata to all configured forges for the given names.
-func RunSync(cfg *config.Config, names []string, disp git.Reporter) error {
+// runSync syncs repo metadata to all configured forges for the given names
+func RunSync(cfg *config.Config, names []string, disp gitops.Reporter) error {
 	nrepos := len(names)
 	nremotes := len(cfg.Platform)
 	rc := min(cfg.General.Concurrency.Repo, nrepos)

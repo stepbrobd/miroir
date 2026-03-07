@@ -73,7 +73,7 @@ func loadConfig(cmd *cobra.Command, args []string) error {
 }
 
 func resolveTargets(cmd *cobra.Command, args []string) error {
-	if err := git.Available(); err != nil {
+	if err := gitops.Available(); err != nil {
 		return err
 	}
 	if err := loadConfig(cmd, args); err != nil {
