@@ -2,6 +2,7 @@
 package miroir
 
 import (
+	"context"
 	"fmt"
 	"path/filepath"
 	"sync"
@@ -15,6 +16,7 @@ import (
 
 // runOptions configures a batch git operation run
 type RunOptions struct {
+	Context           context.Context
 	Targets           []string
 	Contexts          map[string]*workspace.Context
 	PlatformCount     int
@@ -39,6 +41,10 @@ func reportRepoErrors(errs []repoErr) error {
 
 // runGitOp runs a git operation across the selected target repositories
 func RunGitOp(op gitops.Op, opts RunOptions) error {
+	ctx := opts.Context
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	nr := op.Remotes(opts.PlatformCount)
 
 	var errs []repoErr
@@ -52,11 +58,17 @@ func RunGitOp(op gitops.Op, opts RunOptions) error {
 	if nr == 0 {
 		sem := make(chan struct{}, 1)
 		for _, target := range opts.Targets {
+			if err := ctx.Err(); err != nil {
+				break
+			}
 			err := op.Run(gitops.Params{
-				Path: target, Ctx: opts.Contexts[target], Disp: opts.Reporter,
+				RunCtx: ctx, Path: target, Ctx: opts.Contexts[target], Disp: opts.Reporter,
 				Slot: 0, Sem: sem, Force: opts.Force, Args: opts.Args,
 			})
 			if err != nil {
+				if ctx.Err() != nil {
+					break
+				}
 				name := filepath.Base(target)
 				addErr(name, err.Error())
 			}
@@ -82,15 +94,26 @@ func RunGitOp(op gitops.Op, opts RunOptions) error {
 			wg.Add(1)
 			go func(target string) {
 				defer wg.Done()
-				slot := <-pool
+				var slot int
+				select {
+				case slot = <-pool:
+				case <-ctx.Done():
+					return
+				}
 				defer func() { pool <- slot }()
 				opts.Reporter.Clear(slot)
 
+				if ctx.Err() != nil {
+					return
+				}
 				err := op.Run(gitops.Params{
-					Path: target, Ctx: opts.Contexts[target], Disp: opts.Reporter,
+					RunCtx: ctx, Path: target, Ctx: opts.Contexts[target], Disp: opts.Reporter,
 					Slot: slot, Sem: sem, Force: opts.Force, Args: opts.Args,
 				})
 				if err != nil {
+					if ctx.Err() != nil {
+						return
+					}
 					name := filepath.Base(target)
 					addErr(name, err.Error())
 				}
@@ -100,6 +123,9 @@ func RunGitOp(op gitops.Op, opts RunOptions) error {
 		opts.Reporter.Finish()
 	}
 
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	if len(errs) > 0 {
 		return reportRepoErrors(errs)
 	}
@@ -114,8 +140,9 @@ func min(a, b int) int {
 }
 
 // selectRunOptions builds runOptions from config targets and a reporter
-func SelectRunOptions(cfg *config.Config, targets []string, ctxs map[string]*workspace.Context, reporter gitops.Reporter, force bool, args []string) RunOptions {
+func SelectRunOptions(ctx context.Context, cfg *config.Config, targets []string, ctxs map[string]*workspace.Context, reporter gitops.Reporter, force bool, args []string) RunOptions {
 	return RunOptions{
+		Context:           ctx,
 		Targets:           targets,
 		Contexts:          ctxs,
 		PlatformCount:     len(cfg.Platform),

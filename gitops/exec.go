@@ -19,7 +19,7 @@ func (Exec) Run(p Params) error {
 	if len(p.Args) == 0 {
 		return errors.New("no command provided")
 	}
-	cmd := exec.Command(p.Args[0], p.Args[1:]...)
+	cmd := exec.CommandContext(contextOrBackground(p.RunCtx), p.Args[0], p.Args[1:]...)
 	cmd.Dir = p.Path
 	cmd.Env = p.Ctx.Env
 	cmd.Stdout = os.Stdout

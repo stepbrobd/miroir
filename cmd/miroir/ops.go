@@ -80,17 +80,21 @@ func init() {
 }
 
 func runOn(op gitops.Op, force bool, extra []string) error {
+	ctx, stop := signalContext()
+	defer stop()
 	disp := display.New(min(cfg.General.Concurrency.Repo, max(1, len(targets))), op.Remotes(len(cfg.Platform)), display.DefaultTheme, ttyOverride())
-	return miroir.RunGitOp(op, miroir.SelectRunOptions(cfg, targets, ctxs, disp, force, extra))
+	return miroir.RunGitOp(op, miroir.SelectRunOptions(ctx, cfg, targets, ctxs, disp, force, extra))
 }
 
 func runSync() error {
+	ctx, stop := signalContext()
+	defer stop()
 	names, err := miroir.SyncNames(cfg, miroir.SelectOptions{Name: nameFlag, All: allFlag})
 	if err != nil {
 		return err
 	}
 	disp := display.New(min(cfg.General.Concurrency.Repo, max(1, len(names))), len(cfg.Platform), display.DefaultTheme, ttyOverride())
-	return miroir.RunSync(cfg, names, disp)
+	return miroir.RunSync(ctx, cfg, names, disp)
 }
 
 func runSweep() error {
@@ -158,11 +162,15 @@ func runSweep() error {
 }
 
 func runIndex() error {
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	ctx, stop := signalContext()
 	defer stop()
 	c, err := index.CfgFrom(cfg)
 	if err != nil {
 		return err
 	}
 	return index.Run(ctx, c)
+}
+
+func signalContext() (context.Context, context.CancelFunc) {
+	return signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 }

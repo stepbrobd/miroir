@@ -72,6 +72,7 @@ func CfgFrom(c *config.Config) (*Cfg, error) {
 			webURL, webURLType := repoWebMetadata(p, name)
 			repos = append(repos, Repo{
 				Name:       name,
+				IndexName:  repoIndexName(p, name),
 				URI:        uri,
 				Branch:     branch,
 				WebURL:     webURL,
@@ -114,6 +115,10 @@ func repoWebMetadata(p config.Platform, repo string) (string, string) {
 	}
 
 	return fmt.Sprintf("https://%s/%s", p.Domain, path.Join(p.User, repo)), webURLType
+}
+
+func repoIndexName(p config.Platform, repo string) string {
+	return path.Join(p.Domain, p.User, repo)
 }
 
 func mergeEnv(extra map[string]string) CmdEnv {
@@ -191,7 +196,7 @@ func Run(ctx context.Context, c *Cfg) error {
 				return
 			}
 			defer cycleMu.Unlock()
-			cycle(c)
+			cycleContext(ctx, c)
 		})
 	}
 
@@ -222,28 +227,47 @@ func Run(ctx context.Context, c *Cfg) error {
 
 // cycle runs one fetch+index pass
 func cycle(c *Cfg) {
+	cycleContext(context.Background(), c)
+}
+
+func cycleContext(ctx context.Context, c *Cfg) {
 	log.Info("cycle start")
 	start := time.Now()
 	var n int
 	var discovered []string
 	includeReady := len(c.Include) == 0
 
+	if err := ctx.Err(); err != nil {
+		return
+	}
 	if err := cleanupManagedRepoDirs(c); err != nil {
 		log.Error("cleanup repos failed", "err", err)
 	}
 
 	// fetch and index each managed repo immediately
 	for _, r := range c.Repos {
-		p, err := Fetch(c.Home, r, c.Bare, c.Env)
+		if err := ctx.Err(); err != nil {
+			return
+		}
+		p, err := FetchContext(ctx, c.Home, r, c.Bare, c.Env)
 		if err != nil {
+			if ctx.Err() != nil {
+				return
+			}
 			log.Error("fetch failed", "repo", r.Name, "err", err)
 			continue
 		}
-		if err := IndexRepo(p, c.Database, r.Name, nil); err != nil {
+		if err := IndexRepo(p, c.Database, r.servedName(), nil); err != nil {
+			if ctx.Err() != nil {
+				return
+			}
 			log.Error("index failed", "repo", r.Name, "err", err)
 			continue
 		}
-		if err := cleanupManagedShardsForRepo(c.Database, p, r.Name); err != nil {
+		if err := ctx.Err(); err != nil {
+			return
+		}
+		if err := cleanupManagedShardsForRepo(c.Database, p, r.servedName()); err != nil {
 			log.Error("cleanup managed shards failed", "repo", r.Name, "err", err)
 		}
 		n++
@@ -251,6 +275,9 @@ func cycle(c *Cfg) {
 
 	// discover include repos (no fetch, index only)
 	if len(c.Include) > 0 {
+		if err := ctx.Err(); err != nil {
+			return
+		}
 		var err error
 		discovered, err = Discover(c.Include)
 		if err != nil {
@@ -258,7 +285,13 @@ func cycle(c *Cfg) {
 		} else {
 			includeReady = true
 			for _, p := range discovered {
+				if err := ctx.Err(); err != nil {
+					return
+				}
 				if err := IndexRepo(p, c.Database, "", nil); err != nil {
+					if ctx.Err() != nil {
+						return
+					}
 					log.Error("index failed", "repo", p, "err", err)
 					continue
 				}
@@ -267,6 +300,9 @@ func cycle(c *Cfg) {
 		}
 	}
 
+	if err := ctx.Err(); err != nil {
+		return
+	}
 	if err := cleanupShards(c, discovered, includeReady); err != nil {
 		log.Error("cleanup shards failed", "err", err)
 	}

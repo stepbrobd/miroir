@@ -17,6 +17,14 @@ func activeManagedRepoPaths(c *Cfg) map[string]string {
 	return paths
 }
 
+func activeManagedShardNames(c *Cfg) map[string]string {
+	names := make(map[string]string, len(c.Repos))
+	for _, r := range c.Repos {
+		names[repoPath(c.Home, r.Name, c.Bare)] = r.servedName()
+	}
+	return names
+}
+
 func cleanupManagedRepoDirs(c *Cfg) error {
 	entries, err := os.ReadDir(c.Home)
 	if os.IsNotExist(err) {
@@ -78,11 +86,7 @@ func cleanupShards(c *Cfg, discovered []string, includeReady bool) error {
 		return err
 	}
 
-	activeByName := activeManagedRepoPaths(c)
-	activeByPath := make(map[string]string, len(activeByName))
-	for name, path := range activeByName {
-		activeByPath[path] = name
-	}
+	activeByPath := activeManagedShardNames(c)
 	activeIncludes := make(map[string]struct{}, len(discovered))
 	for _, path := range discovered {
 		activeIncludes[filepath.Clean(path)] = struct{}{}

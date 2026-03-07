@@ -3,6 +3,7 @@ package gitops
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
@@ -24,7 +25,11 @@ func Available() error {
 // stdout and stderr are merged and delivered line-by-line via onOutput
 // when silent is true, output is suppressed but stderr is captured on failure
 func run(dir string, env []string, silent bool, onOutput func(string), args ...string) error {
-	cmd := exec.Command("git", args...)
+	return runContext(context.Background(), dir, env, silent, onOutput, args...)
+}
+
+func runContext(ctx context.Context, dir string, env []string, silent bool, onOutput func(string), args ...string) error {
+	cmd := exec.CommandContext(contextOrBackground(ctx), "git", args...)
 	cmd.Dir = dir
 	cmd.Env = env
 
@@ -82,6 +87,13 @@ func run(dir string, env []string, silent bool, onOutput func(string), args ...s
 	return nil
 }
 
+func contextOrBackground(ctx context.Context) context.Context {
+	if ctx == nil {
+		return context.Background()
+	}
+	return ctx
+}
+
 func remoteIndex(ctx *workspace.Context, name string) int {
 	for i, r := range ctx.Push {
 		if r.Name == name {
@@ -105,7 +117,15 @@ func ensureRepo(path string) error {
 
 // returns true on error to keep dirty checks safe
 func isDirty(dir string, env []string) bool {
-	cmd := exec.Command("git",
+	dirty, err := isDirtyContext(context.Background(), dir, env)
+	if err != nil {
+		return true
+	}
+	return dirty
+}
+
+func isDirtyContext(ctx context.Context, dir string, env []string) (bool, error) {
+	cmd := exec.CommandContext(contextOrBackground(ctx), "git",
 		"status",
 		"--porcelain",
 		"--untracked-files=normal",
@@ -116,7 +136,7 @@ func isDirty(dir string, env []string) bool {
 
 	out, err := cmd.Output()
 	if err != nil {
-		return true
+		return false, err
 	}
-	return len(out) > 0
+	return len(out) > 0, nil
 }

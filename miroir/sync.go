@@ -36,7 +36,7 @@ func reportRepoRemoteErrors(errs []repoRemoteErr) error {
 	return fmt.Errorf("%d repo(s) failed to sync", len(errs))
 }
 
-func syncRepo(cfg *config.Config, disp gitops.Reporter, slot int, sem chan struct{}, name string) []remoteErr {
+func syncRepo(ctx context.Context, cfg *config.Config, disp gitops.Reporter, slot int, sem chan struct{}, name string) []remoteErr {
 	repo, ok := cfg.Repo[name]
 	if !ok {
 		disp.Repo(slot, fmt.Sprintf("%s :: sync :: no repo config", name))
@@ -55,9 +55,14 @@ func syncRepo(cfg *config.Config, disp gitops.Reporter, slot int, sem chan struc
 		wg.Add(1)
 		go func(j int, pname string, p config.Platform) {
 			defer wg.Done()
+			runCtx := contextOrBackground(ctx)
 			disp.Remote(slot, j, fmt.Sprintf("%s :: waiting...", pname))
-			sem <- struct{}{}
-			defer func() { <-sem }()
+			select {
+			case sem <- struct{}{}:
+				defer func() { <-sem }()
+			case <-runCtx.Done():
+				return
+			}
 
 			f := config.ResolveForge(p)
 			t := config.ResolveToken(pname, p)
@@ -82,7 +87,7 @@ func syncRepo(cfg *config.Config, disp gitops.Reporter, slot int, sem chan struc
 				mu.Unlock()
 				return
 			}
-			ctx, cancel := context.WithTimeout(context.Background(), syncTimeout)
+			runCtx, cancel := context.WithTimeout(runCtx, syncTimeout)
 			defer cancel()
 			meta := forge.Meta{
 				Name:     name,
@@ -90,7 +95,10 @@ func syncRepo(cfg *config.Config, disp gitops.Reporter, slot int, sem chan struc
 				Vis:      repo.Visibility,
 				Archived: repo.Archived,
 			}
-			if err := impl.Sync(ctx, p.User, meta); err != nil {
+			if err := impl.Sync(runCtx, p.User, meta); err != nil {
+				if ctx.Err() != nil {
+					return
+				}
 				disp.ErrorRemote(slot, j, fmt.Sprintf("%s :: error", pname))
 				disp.ErrorOutput(slot, j, err.Error())
 				mu.Lock()
@@ -108,7 +116,8 @@ func syncRepo(cfg *config.Config, disp gitops.Reporter, slot int, sem chan struc
 }
 
 // runSync syncs repo metadata to all configured forges for the given names
-func RunSync(cfg *config.Config, names []string, disp gitops.Reporter) error {
+func RunSync(ctx context.Context, cfg *config.Config, names []string, disp gitops.Reporter) error {
+	ctx = contextOrBackground(ctx)
 	nrepos := len(names)
 	nremotes := len(cfg.Platform)
 	rc := min(cfg.General.Concurrency.Repo, nrepos)
@@ -134,11 +143,19 @@ func RunSync(cfg *config.Config, names []string, disp gitops.Reporter) error {
 		wg.Add(1)
 		go func(name string) {
 			defer wg.Done()
-			slot := <-pool
+			var slot int
+			select {
+			case slot = <-pool:
+			case <-ctx.Done():
+				return
+			}
 			defer func() { pool <- slot }()
 			disp.Clear(slot)
 
-			for _, re := range syncRepo(cfg, disp, slot, sem, name) {
+			if ctx.Err() != nil {
+				return
+			}
+			for _, re := range syncRepo(ctx, cfg, disp, slot, sem, name) {
 				errMu.Lock()
 				err = append(err, repoRemoteErr{name, re.remote, re.msg})
 				errMu.Unlock()
@@ -148,8 +165,18 @@ func RunSync(cfg *config.Config, names []string, disp gitops.Reporter) error {
 	wg.Wait()
 	disp.Finish()
 
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	if len(err) > 0 {
 		return reportRepoRemoteErrors(err)
 	}
 	return nil
+}
+
+func contextOrBackground(ctx context.Context) context.Context {
+	if ctx == nil {
+		return context.Background()
+	}
+	return ctx
 }

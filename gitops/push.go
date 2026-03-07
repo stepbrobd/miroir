@@ -37,15 +37,20 @@ func (Push) Run(p Params) error {
 		go func(r workspace.Remote) {
 			defer wg.Done()
 			j := remoteIndex(p.Ctx, r.Name)
+			ctx := contextOrBackground(p.RunCtx)
 			p.Disp.Remote(p.Slot, j, fmt.Sprintf("%s :: waiting...", r.Name))
-			p.Sem <- struct{}{}
-			defer func() { <-p.Sem }()
+			select {
+			case p.Sem <- struct{}{}:
+				defer func() { <-p.Sem }()
+			case <-ctx.Done():
+				return
+			}
 
 			p.Disp.Remote(p.Slot, j, fmt.Sprintf("%s :: pushing...", r.Name))
 			args := append([]string{"push"}, forceArgs...)
 			args = append(args, r.GitName, p.Ctx.Branch)
 			args = append(args, p.Args...)
-			err := run(p.Path, p.Ctx.Env, false,
+			err := runContext(ctx, p.Path, p.Ctx.Env, false,
 				func(s string) { p.Disp.Output(p.Slot, j, s) },
 				args...)
 

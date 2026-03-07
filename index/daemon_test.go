@@ -2,6 +2,7 @@ package index
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -50,6 +51,18 @@ func gitRun(t *testing.T, dir string, env []string, args ...string) {
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("git %v: %s: %s", args, err, out)
 	}
+}
+
+func waitForFile(t *testing.T, path string) {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		if _, err := os.Stat(path); err == nil {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatalf("timed out waiting for %s", path)
 }
 
 func searchMatches(t *testing.T, dir, pattern string) []zoekt.FileMatch {
@@ -178,6 +191,121 @@ func TestCycleIntegration(t *testing.T) {
 	}
 	if !found {
 		t.Error("no .zoekt shard files created")
+	}
+}
+
+func TestCycleContextCanceledBeforeWork(t *testing.T) {
+	skipNoGit(t)
+	tmp := t.TempDir()
+	src := seedRepoWithFile(t, tmp, "hello.go", "package main\n")
+
+	home := filepath.Join(tmp, "repos")
+	db := filepath.Join(tmp, "shards")
+	if err := os.MkdirAll(home, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(db, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	c := &Cfg{
+		Listen:   ":0",
+		Database: db,
+		Interval: time.Hour,
+		Bare:     true,
+		Home:     home,
+		Repos:    []Repo{{Name: "seed", URI: src, Branch: "main"}},
+	}
+
+	cycleContext(ctx, c)
+	if _, err := os.Stat(filepath.Join(home, "seed.git")); !os.IsNotExist(err) {
+		t.Fatalf("expected canceled cycle to skip repo setup got %v", err)
+	}
+	if got := shardRepoNames(t, db); len(got) != 0 {
+		t.Fatalf("expected canceled cycle to skip shard writes got %v", got)
+	}
+}
+
+func TestCycleContextCanceledDuringFetchStopsLaterRepos(t *testing.T) {
+	skipNoGit(t)
+	tmp := t.TempDir()
+
+	first := seedRepoWithFile(t, tmp, "first.go", "package first\n")
+	second := seedRepoWithFile(t, filepath.Join(tmp, "second-src"), "second.go", "package second\n")
+
+	realGit, err := exec.LookPath("git")
+	if err != nil {
+		t.Fatal(err)
+	}
+	binDir := filepath.Join(tmp, "bin")
+	if err := os.MkdirAll(binDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	mark := filepath.Join(tmp, "fetch-started")
+	wrapper := filepath.Join(binDir, "git")
+	script := fmt.Sprintf(`#!/bin/sh
+if [ "$1" = "fetch" ] && [ "$(basename "$PWD")" = "first.git" ]; then
+  : > "$MIROIR_FETCH_MARK"
+  trap 'exit 0' TERM INT
+  while :; do sleep 1; done
+fi
+exec "%s" "$@"
+`, realGit)
+	if err := os.WriteFile(wrapper, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	t.Setenv("MIROIR_FETCH_MARK", mark)
+	t.Setenv("PATH", binDir+":"+os.Getenv("PATH"))
+
+	home := filepath.Join(tmp, "repos")
+	db := filepath.Join(tmp, "shards")
+	if err := os.MkdirAll(home, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(db, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	c := &Cfg{
+		Listen:   ":0",
+		Database: db,
+		Interval: time.Hour,
+		Bare:     true,
+		Home:     home,
+		Env:      CmdEnv(gitEnv()),
+		Repos: []Repo{
+			{Name: "first", URI: first, Branch: "main"},
+			{Name: "second", URI: second, Branch: "main"},
+		},
+	}
+
+	done := make(chan struct{})
+	go func() {
+		cycleContext(ctx, c)
+		close(done)
+	}()
+
+	waitForFile(t, mark)
+	cancel()
+
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out waiting for canceled cycle")
+	}
+
+	if _, err := os.Stat(filepath.Join(home, "second.git")); !os.IsNotExist(err) {
+		t.Fatalf("expected second repo not to start got %v", err)
+	}
+	if got := shardRepoNames(t, db); len(got) != 0 {
+		t.Fatalf("expected canceled cycle to skip shard writes got %v", got)
 	}
 }
 
@@ -581,7 +709,7 @@ func TestCleanupManagedShardsForRepoRemovesLegacyNames(t *testing.T) {
 	}
 }
 
-func TestCycleManagedRepoKeepsShortNameAndGithubLinks(t *testing.T) {
+func TestCycleManagedRepoUsesFullNameAndGithubLinks(t *testing.T) {
 	skipNoGit(t)
 	tmp := t.TempDir()
 	src := seedRepoWithFile(t, tmp, "main.txt", "main branch only\n")
@@ -603,6 +731,7 @@ func TestCycleManagedRepoKeepsShortNameAndGithubLinks(t *testing.T) {
 		Home:     home,
 		Repos: []Repo{{
 			Name:       "seed",
+			IndexName:  "github.com/alice/seed",
 			URI:        src,
 			Branch:     "main",
 			WebURL:     "https://github.com/alice/seed",
@@ -612,7 +741,10 @@ func TestCycleManagedRepoKeepsShortNameAndGithubLinks(t *testing.T) {
 
 	cycle(c)
 
-	repo := shardRepoByName(t, db, "seed")
+	repo := shardRepoByName(t, db, "github.com/alice/seed")
+	if repo.Name != "github.com/alice/seed" {
+		t.Fatalf("name: got %q", repo.Name)
+	}
 	if repo.URL != "https://github.com/alice/seed" {
 		t.Fatalf("url: got %q", repo.URL)
 	}
@@ -681,6 +813,9 @@ func TestCfgFromBasic(t *testing.T) {
 	}
 	if got.Repos[0].Name != "foo" {
 		t.Errorf("repo name: got %q", got.Repos[0].Name)
+	}
+	if got.Repos[0].IndexName != "github.com/alice/foo" {
+		t.Errorf("repo index name: got %q", got.Repos[0].IndexName)
 	}
 	if got.Repos[0].WebURL != "https://github.com/alice/foo" {
 		t.Errorf("repo web url: got %q", got.Repos[0].WebURL)

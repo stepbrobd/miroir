@@ -1,6 +1,8 @@
 package gitops
 
 import (
+	"context"
+
 	"ysun.co/miroir/workspace"
 )
 
@@ -23,11 +25,12 @@ type Op interface {
 }
 
 type Params struct {
-	Path  string
-	Ctx   *workspace.Context
-	Disp  Reporter
-	Slot  int
-	Sem   chan struct{} // bounds concurrent remote operations
-	Force bool
-	Args  []string
+	RunCtx context.Context
+	Path   string
+	Ctx    *workspace.Context
+	Disp   Reporter
+	Slot   int
+	Sem    chan struct{} // bounds concurrent remote operations
+	Force  bool
+	Args   []string
 }
