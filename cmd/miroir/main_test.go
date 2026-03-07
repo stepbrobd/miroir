@@ -8,6 +8,7 @@ import (
 	"github.com/adrg/xdg"
 
 	"ysun.co/miroir/internal/config"
+	"ysun.co/miroir/miroir"
 	"ysun.co/miroir/workspace"
 )
 
@@ -121,7 +122,7 @@ func TestSelectTargetsByName(t *testing.T) {
 	allFlag = false
 	t.Cleanup(func() { nameFlag = "" })
 
-	got, err := selectTargets()
+	got, err := miroir.SelectTargets(cfg, ctxs, miroir.SelectOptions{Name: nameFlag, All: allFlag})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -137,7 +138,7 @@ func TestSelectTargetsByNameNotFound(t *testing.T) {
 	allFlag = false
 	t.Cleanup(func() { nameFlag = "" })
 
-	_, err := selectTargets()
+	_, err := miroir.SelectTargets(cfg, ctxs, miroir.SelectOptions{Name: nameFlag, All: allFlag})
 	if err == nil {
 		t.Fatal("expected error for missing repo")
 	}
@@ -150,7 +151,7 @@ func TestSelectTargetsAll(t *testing.T) {
 	allFlag = true
 	t.Cleanup(func() { allFlag = false })
 
-	got, err := selectTargets()
+	got, err := miroir.SelectTargets(cfg, ctxs, miroir.SelectOptions{Name: nameFlag, All: allFlag})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -187,7 +188,7 @@ func TestSelectTargetsByCwd(t *testing.T) {
 	defer os.Chdir(oldDir)
 	os.Chdir(dir)
 
-	got, err := selectTargets()
+	got, err := miroir.SelectTargets(cfg, ctxs, miroir.SelectOptions{Name: nameFlag, All: allFlag})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -206,7 +207,7 @@ func TestSelectTargetsNotManaged(t *testing.T) {
 	defer os.Chdir(oldDir)
 	os.Chdir(t.TempDir())
 
-	_, err := selectTargets()
+	_, err := miroir.SelectTargets(cfg, ctxs, miroir.SelectOptions{Name: nameFlag, All: allFlag})
 	if err == nil {
 		t.Fatal("expected error when cwd is not a managed repo")
 	}
@@ -219,7 +220,7 @@ func TestSelectTargetsRejectsNestedManagedRepo(t *testing.T) {
 		"/home/test/ws/group/alpha": {},
 	}
 
-	_, err := selectTargets()
+	_, err := miroir.SelectTargets(cfg, ctxs, miroir.SelectOptions{Name: nameFlag, All: allFlag})
 	if err == nil {
 		t.Fatal("expected error for nested managed repo path")
 	}
@@ -232,7 +233,7 @@ func TestSelectTargetsRejectsManagedRepoOutsideWorkspace(t *testing.T) {
 		"/home/test/other/alpha": {},
 	}
 
-	_, err := selectTargets()
+	_, err := miroir.SelectTargets(cfg, ctxs, miroir.SelectOptions{Name: nameFlag, All: allFlag})
 	if err == nil {
 		t.Fatal("expected error for managed repo outside workspace")
 	}
@@ -251,7 +252,7 @@ func TestSyncNamesByName(t *testing.T) {
 	allFlag = false
 	t.Cleanup(func() { nameFlag = "" })
 
-	got, err := syncNames()
+	got, err := miroir.SyncNames(cfg, miroir.SelectOptions{Name: nameFlag, All: allFlag})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -269,7 +270,7 @@ func TestSyncNamesRejectsNestedRepoName(t *testing.T) {
 		},
 	}
 
-	_, err := syncNames()
+	_, err := miroir.SyncNames(cfg, miroir.SelectOptions{Name: nameFlag, All: allFlag})
 	if err == nil {
 		t.Fatal("expected error for nested sync repo path")
 	}

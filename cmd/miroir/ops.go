@@ -21,6 +21,7 @@ import (
 	"ysun.co/miroir/internal/forge"
 	"ysun.co/miroir/internal/git"
 	"ysun.co/miroir/internal/index"
+	"ysun.co/miroir/miroir"
 	"ysun.co/miroir/workspace"
 )
 
@@ -262,25 +263,7 @@ func syncRepo(disp *display.Display, slot int, sem chan struct{}, name string) [
 
 // includes archived repos (unlike selectTargets which uses ctxs)
 func syncNames() ([]string, error) {
-	home, err := workspace.ExpandHome(cfg.General.Home)
-	if err != nil {
-		return nil, err
-	}
-	names := slices.Sorted(maps.Keys(cfg.Repo))
-	for _, name := range names {
-		path := filepath.Join(home, name)
-		rel, err := filepath.Rel(home, path)
-		if err != nil {
-			return nil, fmt.Errorf("repo path %q: %w", path, err)
-		}
-		if rel == "." || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
-			return nil, fmt.Errorf("repo path %q is outside workspace %q", path, home)
-		}
-		if strings.Contains(rel, string(filepath.Separator)) {
-			return nil, fmt.Errorf("repo path %q is not flat under workspace %q", path, home)
-		}
-	}
-	return resolveNames(names, home)
+	return miroir.SyncNames(cfg, miroir.SelectOptions{Name: nameFlag, All: allFlag})
 }
 
 func runSync() error {

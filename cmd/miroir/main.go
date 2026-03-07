@@ -1,12 +1,7 @@
 package main
 
 import (
-	"fmt"
-	"maps"
-	"os"
 	"path/filepath"
-	"slices"
-	"strings"
 
 	"github.com/adrg/xdg"
 	"github.com/charmbracelet/log"
@@ -15,6 +10,7 @@ import (
 
 	"ysun.co/miroir/internal/config"
 	"ysun.co/miroir/internal/git"
+	"ysun.co/miroir/miroir"
 	"ysun.co/miroir/workspace"
 )
 
@@ -88,76 +84,8 @@ func resolveTargets(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	targets, err = selectTargets()
+	targets, err = miroir.SelectTargets(cfg, ctxs, miroir.SelectOptions{Name: nameFlag, All: allFlag})
 	return err
-}
-
-func flatNames(paths []string, home string) ([]string, error) {
-	names := make([]string, 0, len(paths))
-	seen := make(map[string]struct{}, len(paths))
-	for _, path := range paths {
-		rel, err := filepath.Rel(home, path)
-		if err != nil {
-			return nil, fmt.Errorf("repo path %q: %w", path, err)
-		}
-		if rel == "." || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
-			return nil, fmt.Errorf("repo path %q is outside workspace %q", path, home)
-		}
-		if strings.Contains(rel, string(filepath.Separator)) {
-			return nil, fmt.Errorf("repo path %q is not flat under workspace %q", path, home)
-		}
-		if _, ok := seen[rel]; ok {
-			return nil, fmt.Errorf("duplicate repo name %q under workspace %q", rel, home)
-		}
-		seen[rel] = struct{}{}
-		names = append(names, rel)
-	}
-	slices.Sort(names)
-	return names, nil
-}
-
-// resolveNames picks repo names from sorted candidates via flags or cwd
-func resolveNames(names []string, home string) ([]string, error) {
-	if nameFlag != "" {
-		if !slices.Contains(names, nameFlag) {
-			return nil, fmt.Errorf("repo '%s' not found in config", nameFlag)
-		}
-		return []string{nameFlag}, nil
-	}
-	if allFlag {
-		return names, nil
-	}
-	cwd, err := os.Getwd()
-	if err != nil {
-		return nil, fmt.Errorf("getwd: %w", err)
-	}
-	for _, n := range names {
-		path := filepath.Join(home, n)
-		if path == cwd || strings.HasPrefix(cwd, path+string(filepath.Separator)) {
-			return []string{n}, nil
-		}
-	}
-	return nil, fmt.Errorf("not a managed repository (cwd: %s)", cwd)
-}
-
-func selectTargets() ([]string, error) {
-	home, err := workspace.ExpandHome(cfg.General.Home)
-	if err != nil {
-		return nil, err
-	}
-	names, err := flatNames(slices.Collect(maps.Keys(ctxs)), home)
-	if err != nil {
-		return nil, err
-	}
-	matched, err := resolveNames(names, home)
-	if err != nil {
-		return nil, err
-	}
-	paths := make([]string, len(matched))
-	for i, n := range matched {
-		paths[i] = filepath.Join(home, n)
-	}
-	return paths, nil
 }
 
 func ttyOverride() *bool {
