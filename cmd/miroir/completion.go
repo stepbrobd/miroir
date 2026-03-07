@@ -10,7 +10,7 @@ import (
 func init() {
 	root.AddCommand(&cobra.Command{
 		Use:       "completion [bash|zsh|fish|powershell]",
-		Short:     "generate shell completion script",
+		Short:     "Generate shell completion script",
 		Args:      cobra.ExactArgs(1),
 		ValidArgs: []string{"bash", "zsh", "fish", "powershell"},
 		RunE: func(cmd *cobra.Command, args []string) error {

@@ -23,7 +23,7 @@ var (
 	ttyFlag   bool
 	noTTYFlag bool
 
-	// set by resolveTargets; must be populated before subcommand RunE
+	// set by resolveTargets before subcommand RunE
 	targets []string
 	ctxs    map[string]*workspace.Context
 	cfg     *config.Config
@@ -40,16 +40,16 @@ func init() {
 	root.Version = version
 
 	f := root.PersistentFlags()
-	f.StringP("config", "c", "", "config file path")
-	f.StringVarP(&nameFlag, "name", "n", "", "target repo by name")
-	f.BoolVarP(&allFlag, "all", "a", false, "target all repos")
-	f.BoolVarP(&forceFlag, "force", "f", false, "force operation")
-	f.BoolVar(&ttyFlag, "tty", false, "force TTY output")
-	f.BoolVar(&noTTYFlag, "no-tty", false, "force plain output")
+	f.StringP("config", "c", "", "Config file path")
+	f.StringVarP(&nameFlag, "name", "n", "", "Target repo by name")
+	f.BoolVarP(&allFlag, "all", "a", false, "Target all repos")
+	f.BoolVarP(&forceFlag, "force", "f", false, "Force operation")
+	f.BoolVar(&ttyFlag, "tty", false, "Force TTY output")
+	f.BoolVar(&noTTYFlag, "no-tty", false, "Force plain output")
 	root.MarkFlagsMutuallyExclusive("tty", "no-tty")
 }
 
-// priority: --config flag > MIROIR_CONFIG env > XDG config dirs
+// --config beats MIROIR_CONFIG which beats XDG config dirs
 func configPath() (string, error) {
 	v := viper.New()
 	v.SetEnvPrefix("MIROIR")
@@ -100,7 +100,22 @@ func ttyOverride() *bool {
 	return nil
 }
 
+func normalizeHelpText(cmd *cobra.Command) {
+	cmd.InitDefaultHelpFlag()
+	if flag := cmd.Flags().Lookup("help"); flag != nil {
+		flag.Usage = "Help for " + cmd.CommandPath()
+	}
+	for _, child := range cmd.Commands() {
+		normalizeHelpText(child)
+	}
+}
+
 func main() {
+	normalizeHelpText(root)
+	root.InitDefaultVersionFlag()
+	if flag := root.Flags().Lookup("version"); flag != nil {
+		flag.Usage = "Version for " + root.CommandPath()
+	}
 	if err := root.Execute(); err != nil {
 		log.Fatal(err)
 	}

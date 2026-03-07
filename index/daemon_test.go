@@ -18,7 +18,7 @@ import (
 	"ysun.co/miroir/config"
 )
 
-// seedRepoWithFile creates a git repo with one committed file.
+// seedRepoWithFile creates a git repo with one committed file
 func seedRepoWithFile(t *testing.T, dir, name, content string) string {
 	t.Helper()
 	src := filepath.Join(dir, "seed")

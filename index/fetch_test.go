@@ -161,7 +161,7 @@ func TestFetchPicksUpNewCommits(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// HEAD should have advanced
+	// fetched ref should have advanced
 	cur := gitRev(t, path, "main")
 	if old == cur {
 		t.Error("fetch did not pick up new commit")

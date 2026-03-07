@@ -144,7 +144,7 @@ func (d *Display) reserve(lines int) {
 	d.ready = true
 }
 
-// redraw repaints all provided lines. caller must hold d.mu.
+// redraw repaints all provided lines while d.mu is held
 func (d *Display) redraw(lines []line) {
 	if !d.ready {
 		d.reserve(len(lines))

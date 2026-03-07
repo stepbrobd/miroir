@@ -103,7 +103,7 @@ func (g *ghForge) Sync(ctx context.Context, user string, m Meta) error {
 		if !ghIsArchived(err) {
 			return err
 		}
-		// repo is archived on remote; unarchive, update, re-archive if needed
+		// repo is archived on remote so unarchive it before updating
 		if err := g.Archive(ctx, user, m.Name, false); err != nil {
 			return err
 		}

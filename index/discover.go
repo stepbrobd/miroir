@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 )
 
-// bare repo markers: HEAD file + objects/ dir
+// bare repos have a HEAD file and an objects dir
 func isBareRepo(path string) bool {
 	_, errH := os.Stat(filepath.Join(path, "HEAD"))
 	info, errO := os.Stat(filepath.Join(path, "objects"))

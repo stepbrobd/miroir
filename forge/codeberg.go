@@ -28,8 +28,7 @@ func newCodeberg(token string) (*cbForge, error) {
 
 func cbPrivate(v config.Visibility) bool { return v == config.Private }
 
-// gitea SDK uses client-level context; guard with mutex since
-// SetContext mutates shared client state
+// gitea sdk uses client-level context so withCtx holds the mutex around SetContext
 func (g *cbForge) withCtx(ctx context.Context) {
 	g.mu.Lock()
 	g.c.SetContext(ctx)

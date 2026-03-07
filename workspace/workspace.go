@@ -43,7 +43,7 @@ func MakeURI(access config.Access, domain, user, repo string) string {
 	}
 }
 
-// returns $HOME; error if unset
+// returns $HOME or an error if unset
 func home() (string, error) {
 	h, ok := os.LookupEnv("HOME")
 	if !ok {

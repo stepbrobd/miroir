@@ -8,7 +8,7 @@ import (
 	"strings"
 )
 
-// runs sequentially with direct stdout; remotes = 0
+// runs sequentially with direct stdout and no remote fan-out
 type Exec struct{}
 
 func (Exec) Remotes(_ int) int { return 0 }

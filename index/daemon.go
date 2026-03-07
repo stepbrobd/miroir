@@ -120,7 +120,7 @@ func Run(ctx context.Context, c *Cfg) error {
 	}
 	defer searcher.Close()
 
-	// clone web.Top so we don't mutate the package-level global
+	// clone the top template set so we don't mutate the package-level global
 	top, err := web.Top.Clone()
 	if err != nil {
 		return fmt.Errorf("clone templates: %w", err)

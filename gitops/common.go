@@ -103,7 +103,7 @@ func ensureRepo(path string) error {
 	return nil
 }
 
-// fail-safe: returns true (dirty) on error to prevent unsafe operations
+// returns true on error to keep dirty checks safe
 func isDirty(dir string, env []string) bool {
 	cmd := exec.Command("git",
 		"status",

@@ -32,7 +32,7 @@ func gitCmd(use, short string, op git.Op) *cobra.Command {
 func init() {
 	execCmd := &cobra.Command{
 		Use:               "exec [flags] -- <command> [args...]",
-		Short:             "execute command in repo(s)",
+		Short:             "Execute command in repo(s)",
 		PersistentPreRunE: resolveTargets,
 		Args:              cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -42,7 +42,7 @@ func init() {
 
 	syncCmd := &cobra.Command{
 		Use:               "sync",
-		Short:             "sync metadata to all forges",
+		Short:             "Sync metadata to all forges",
 		PersistentPreRunE: loadConfig,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runSync()
@@ -51,7 +51,7 @@ func init() {
 
 	sweepCmd := &cobra.Command{
 		Use:               "sweep",
-		Short:             "remove archived and untracked repos from workspace",
+		Short:             "Remove archived and untracked repos from workspace",
 		PersistentPreRunE: loadConfig,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runSweep()
@@ -60,7 +60,7 @@ func init() {
 
 	indexCmd := &cobra.Command{
 		Use:               "index",
-		Short:             "start index daemon (fetch, index, serve)",
+		Short:             "Start index daemon (fetch, index, serve)",
 		PersistentPreRunE: loadConfig,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runIndex()
@@ -68,10 +68,10 @@ func init() {
 	}
 
 	root.AddCommand(
-		gitCmd("init", "initialize repo(s)", git.Init{}),
-		gitCmd("fetch", "fetch from all remotes", git.Fetch{}),
-		gitCmd("pull", "pull from origin", git.Pull{}),
-		gitCmd("push", "push to all remotes", git.Push{}),
+		gitCmd("init", "Initialize repo(s)", git.Init{}),
+		gitCmd("fetch", "Fetch from all remotes", git.Fetch{}),
+		gitCmd("pull", "Pull from origin", git.Pull{}),
+		gitCmd("push", "Push to all remotes", git.Push{}),
 		execCmd,
 		syncCmd,
 		sweepCmd,
