@@ -11,14 +11,14 @@ import (
 
 // IndexRepo indexes a single git repo into the given shard directory
 // branches defaults to ["HEAD"] if empty
-func IndexRepo(repoDir, indexDir string, branches []string) error {
+func IndexRepo(repoDir, indexDir, name string, branches []string) error {
 	if len(branches) == 0 {
 		branches = []string{"HEAD"}
 	}
-	log.Info("indexing", "repo", repoDir)
-
-	// use dir basename as fallback name for repos without remotes
-	name := filepath.Base(repoDir)
+	if name == "" {
+		name = filepath.Base(repoDir)
+	}
+	log.Info("indexing", "repo", name, "source", repoDir)
 
 	opts := gitindex.Options{
 		RepoDir:     repoDir,

@@ -34,13 +34,6 @@ type Cfg struct {
 	Repos []Repo
 }
 
-func branchesForIndexing(bare bool, r Repo) []string {
-	if bare {
-		return []string{r.Branch}
-	}
-	return []string{"HEAD"}
-}
-
 // CfgFrom builds a daemon config with process env merged with config env.
 func CfgFrom(c *config.Config) (*Cfg, error) {
 	home, err := workspace.ExpandHome(c.General.Home)
@@ -201,6 +194,12 @@ func cycle(c *Cfg) {
 	log.Info("cycle start")
 	start := time.Now()
 	var n int
+	var discovered []string
+	includeReady := len(c.Include) == 0
+
+	if err := cleanupManagedRepoDirs(c); err != nil {
+		log.Error("cleanup repos failed", "err", err)
+	}
 
 	// fetch and index each managed repo immediately
 	for _, r := range c.Repos {
@@ -209,7 +208,7 @@ func cycle(c *Cfg) {
 			log.Error("fetch failed", "repo", r.Name, "err", err)
 			continue
 		}
-		if err := IndexRepo(p, c.Database, branchesForIndexing(c.Bare, r)); err != nil {
+		if err := IndexRepo(p, c.Database, r.Name, nil); err != nil {
 			log.Error("index failed", "repo", r.Name, "err", err)
 			continue
 		}
@@ -218,18 +217,24 @@ func cycle(c *Cfg) {
 
 	// discover include repos (no fetch, index only)
 	if len(c.Include) > 0 {
-		discovered, err := Discover(c.Include)
+		var err error
+		discovered, err = Discover(c.Include)
 		if err != nil {
 			log.Error("discover failed", "err", err)
 		} else {
+			includeReady = true
 			for _, p := range discovered {
-				if err := IndexRepo(p, c.Database, nil); err != nil {
+				if err := IndexRepo(p, c.Database, "", nil); err != nil {
 					log.Error("index failed", "repo", p, "err", err)
 					continue
 				}
 				n++
 			}
 		}
+	}
+
+	if err := cleanupShards(c, discovered, includeReady); err != nil {
+		log.Error("cleanup shards failed", "err", err)
 	}
 
 	log.Info("cycle done", "repos", n, "elapsed", time.Since(start).Round(time.Millisecond))
