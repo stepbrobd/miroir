@@ -61,7 +61,7 @@ archived = true               # Excluded from git ops, archived on forges via sy
 listen = ":6070"              # HTTP listen address for search API
 database = "/data/miroir/idx" # Zoekt shard storage (default: $XDG_DATA_HOME/miroir/index)
 interval = 300                # Seconds between fetch+index cycles
-bare = true                   # Clone managed repos as bare (default: true)
+bare = true                   # true = mirror configured branch, false = index local checked out HEAD
 include = [                   # Extra directories of repos to index (one level deep)
   "/var/lib/gitea/repositories/alice",
 ]
@@ -102,13 +102,13 @@ Tokens can also be set via environment: `MIROIR_<PLATFORM_NAME>_TOKEN` (e.g.
 
 ### Index
 
-| Field      | Default                       | Description                                   |
-| ---------- | ----------------------------- | --------------------------------------------- |
-| `listen`   | `:6070`                       | HTTP listen address                           |
-| `database` | `$XDG_DATA_HOME/miroir/index` | Directory for zoekt index shards              |
-| `interval` | `300`                         | Seconds between fetch+index cycles            |
-| `bare`     | `true`                        | Clone managed repos as bare repos             |
-| `include`  | `[]`                          | Extra directories to discover repos (1 level) |
+| Field      | Default                       | Description                                                                                        |
+| ---------- | ----------------------------- | -------------------------------------------------------------------------------------------------- |
+| `listen`   | `:6070`                       | HTTP listen address                                                                                |
+| `database` | `$XDG_DATA_HOME/miroir/index` | Directory for zoekt index shards                                                                   |
+| `interval` | `300`                         | Seconds between fetch+index cycles                                                                 |
+| `bare`     | `true`                        | `true` indexes a bare mirror of the configured branch `false` indexes the local checked out `HEAD` |
+| `include`  | `[]`                          | Extra directories to discover repos (1 level)                                                      |
 
 The `include` paths are scanned one level deep for both bare and non-bare git
 repos. No git operations (fetch/pull/push) are run on included repos -- they are
@@ -212,8 +212,15 @@ Starts a long-running daemon that:
 
 1. Clones/fetches managed repos (from `[repo.*]` config) on a timer
 2. Discovers repos from `[index].include` paths (one level deep, no git ops)
-3. Indexes each managed repo's configured branch using zoekt's trigram indexer
+3. Indexes each managed repo using zoekt's trigram indexer
 4. Serves the zoekt search API and web UI over HTTP
+
+With `index.bare = true`, miroir keeps a bare mirror and indexes the configured
+branch for each managed repo.
+
+With `index.bare = false`, miroir keeps a normal clone in the workspace and
+indexes the repo's current checked out `HEAD`. This follows your local branch
+selection rather than forcing the configured branch for indexing.
 
 The searcher hot-reloads index shards -- no restart needed after re-indexing.
 Graceful shutdown on SIGINT/SIGTERM.

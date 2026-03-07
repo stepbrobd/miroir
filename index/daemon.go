@@ -34,6 +34,13 @@ type Cfg struct {
 	Repos []Repo
 }
 
+func branchesForIndexing(bare bool, r Repo) []string {
+	if bare {
+		return []string{r.Branch}
+	}
+	return []string{"HEAD"}
+}
+
 // CfgFrom builds a daemon config with process env merged with config env.
 func CfgFrom(c *config.Config) (*Cfg, error) {
 	home, err := workspace.ExpandHome(c.General.Home)
@@ -202,7 +209,7 @@ func cycle(c *Cfg) {
 			log.Error("fetch failed", "repo", r.Name, "err", err)
 			continue
 		}
-		if err := IndexRepo(p, c.Database, []string{r.Branch}); err != nil {
+		if err := IndexRepo(p, c.Database, branchesForIndexing(c.Bare, r)); err != nil {
 			log.Error("index failed", "repo", r.Name, "err", err)
 			continue
 		}

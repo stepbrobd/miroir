@@ -1,12 +1,17 @@
 package index
 
 import (
+	"context"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"slices"
 	"testing"
 	"time"
+
+	zoekt "github.com/sourcegraph/zoekt"
+	"github.com/sourcegraph/zoekt/query"
+	"github.com/sourcegraph/zoekt/search"
 
 	"ysun.co/miroir/config"
 )
@@ -16,19 +21,8 @@ func seedRepoWithFile(t *testing.T, dir, name, content string) string {
 	t.Helper()
 	src := filepath.Join(dir, "seed")
 	os.MkdirAll(src, 0o755)
-	env := append(os.Environ(),
-		"GIT_AUTHOR_NAME=test", "GIT_AUTHOR_EMAIL=t@t",
-		"GIT_COMMITTER_NAME=test", "GIT_COMMITTER_EMAIL=t@t",
-	)
-	run := func(args ...string) {
-		t.Helper()
-		cmd := exec.Command("git", args...)
-		cmd.Dir = src
-		cmd.Env = env
-		if out, err := cmd.CombinedOutput(); err != nil {
-			t.Fatalf("git %v: %s: %s", args, err, out)
-		}
-	}
+	env := gitEnv()
+	run := func(args ...string) { gitRun(t, src, env, args...) }
 	run("init", "--initial-branch=main")
 	if err := os.WriteFile(filepath.Join(src, name), []byte(content), 0o644); err != nil {
 		t.Fatal(err)
@@ -36,6 +30,42 @@ func seedRepoWithFile(t *testing.T, dir, name, content string) string {
 	run("add", ".")
 	run("commit", "-m", "add file")
 	return src
+}
+
+func gitEnv() []string {
+	return append(os.Environ(),
+		"GIT_AUTHOR_NAME=test", "GIT_AUTHOR_EMAIL=t@t",
+		"GIT_COMMITTER_NAME=test", "GIT_COMMITTER_EMAIL=t@t",
+		"GIT_ALLOW_PROTOCOL=file",
+	)
+}
+
+func gitRun(t *testing.T, dir string, env []string, args ...string) {
+	t.Helper()
+	cmd := exec.Command("git", args...)
+	cmd.Dir = dir
+	cmd.Env = env
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("git %v: %s: %s", args, err, out)
+	}
+}
+
+func searchMatches(t *testing.T, dir, pattern string) []zoekt.FileMatch {
+	t.Helper()
+	searcher, err := search.NewDirectorySearcher(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer searcher.Close()
+
+	result, err := searcher.Search(context.Background(),
+		&query.Substring{Pattern: pattern},
+		&zoekt.SearchOptions{},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return result.Files
 }
 
 func TestCycleIntegration(t *testing.T) {
@@ -91,19 +121,8 @@ func TestCycleWithInclude(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	env := append(os.Environ(),
-		"GIT_AUTHOR_NAME=test", "GIT_AUTHOR_EMAIL=t@t",
-		"GIT_COMMITTER_NAME=test", "GIT_COMMITTER_EMAIL=t@t",
-	)
-	run := func(args ...string) {
-		t.Helper()
-		cmd := exec.Command("git", args...)
-		cmd.Dir = repoDir
-		cmd.Env = env
-		if out, err := cmd.CombinedOutput(); err != nil {
-			t.Fatalf("git %v: %s: %s", args, err, out)
-		}
-	}
+	env := gitEnv()
+	run := func(args ...string) { gitRun(t, repoDir, env, args...) }
 	run("init", "--initial-branch=main")
 	if err := os.WriteFile(filepath.Join(repoDir, "lib.go"), []byte("package lib\n"), 0o644); err != nil {
 		t.Fatal(err)
@@ -140,6 +159,53 @@ func TestCycleWithInclude(t *testing.T) {
 	}
 	if !found {
 		t.Error("no .zoekt shard files created from include path")
+	}
+}
+
+func TestCycleNonBareIndexesCheckedOutHead(t *testing.T) {
+	skipNoGit(t)
+	tmp := t.TempDir()
+	env := gitEnv()
+	src := seedRepoWithFile(t, tmp, "main.txt", "main branch only\n")
+
+	gitRun(t, src, env, "checkout", "-b", "feature")
+	if err := os.WriteFile(filepath.Join(src, "feature.txt"), []byte("feature branch needle\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	gitRun(t, src, env, "add", "feature.txt")
+	gitRun(t, src, env, "commit", "-m", "add feature file")
+	gitRun(t, src, env, "checkout", "main")
+
+	home := filepath.Join(tmp, "repos")
+	db := filepath.Join(tmp, "shards")
+	if err := os.MkdirAll(home, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(db, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	c := &Cfg{
+		Listen:   ":0",
+		Database: db,
+		Interval: time.Hour,
+		Bare:     false,
+		Home:     home,
+		Repos:    []Repo{{Name: "seed", URI: src, Branch: "main"}},
+	}
+
+	cycle(c)
+	if matches := searchMatches(t, db, "feature branch needle"); len(matches) != 0 {
+		t.Fatalf("got matches on initial main checkout: %v", matches)
+	}
+
+	clone := filepath.Join(home, "seed")
+	gitRun(t, clone, env, "checkout", "-b", "feature", "origin/feature")
+
+	cycle(c)
+	matches := searchMatches(t, db, "feature branch needle")
+	if len(matches) == 0 {
+		t.Fatal("expected feature branch content after checking out feature locally")
 	}
 }
 
