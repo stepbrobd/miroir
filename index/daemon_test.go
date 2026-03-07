@@ -97,6 +97,30 @@ func shardRepoNames(t *testing.T, dir string) []string {
 	return names
 }
 
+func shardRepoByName(t *testing.T, dir, name string) *zoekt.Repository {
+	t.Helper()
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, entry := range entries {
+		if entry.IsDir() || filepath.Ext(entry.Name()) != ".zoekt" {
+			continue
+		}
+		repos, _, err := zoektindex.ReadMetadataPath(filepath.Join(dir, entry.Name()))
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, repo := range repos {
+			if repo.Name == name {
+				return repo
+			}
+		}
+	}
+	t.Fatalf("repo %q not found in shard metadata", name)
+	return nil
+}
+
 func bareHeadRef(t *testing.T, dir string, env []string) string {
 	t.Helper()
 	out, err := gitOutput(dir, CmdEnv(env), "symbolic-ref", "HEAD")
@@ -516,6 +540,90 @@ func TestCycleRemovesLegacyManagedShardNames(t *testing.T) {
 	}
 }
 
+func TestCleanupManagedShardsForRepoRemovesLegacyNames(t *testing.T) {
+	skipNoGit(t)
+	tmp := t.TempDir()
+	src := seedRepoWithFile(t, tmp, "main.txt", "main branch only\n")
+
+	home := filepath.Join(tmp, "repos")
+	db := filepath.Join(tmp, "shards")
+	if err := os.MkdirAll(home, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(db, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	c := &Cfg{
+		Listen:   ":0",
+		Database: db,
+		Interval: time.Hour,
+		Bare:     true,
+		Home:     home,
+		Repos:    []Repo{{Name: "seed", URI: src, Branch: "main"}},
+	}
+
+	cycle(c)
+	repoPath := filepath.Join(home, "seed.git")
+	gitRun(t, repoPath, gitEnv(), "config", "zoekt.name", "seed.git")
+	if err := IndexRepo(repoPath, db, "seed.git", nil); err != nil {
+		t.Fatal(err)
+	}
+	if got := shardRepoNames(t, db); !slices.Equal(got, []string{"seed", "seed.git"}) {
+		t.Fatalf("expected duplicate shard names got %v", got)
+	}
+
+	if err := cleanupManagedShardsForRepo(db, repoPath, "seed"); err != nil {
+		t.Fatal(err)
+	}
+	if got := shardRepoNames(t, db); !slices.Equal(got, []string{"seed"}) {
+		t.Fatalf("expected legacy shard removed got %v", got)
+	}
+}
+
+func TestCycleManagedRepoKeepsShortNameAndGithubLinks(t *testing.T) {
+	skipNoGit(t)
+	tmp := t.TempDir()
+	src := seedRepoWithFile(t, tmp, "main.txt", "main branch only\n")
+
+	home := filepath.Join(tmp, "repos")
+	db := filepath.Join(tmp, "shards")
+	if err := os.MkdirAll(home, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(db, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	c := &Cfg{
+		Listen:   ":0",
+		Database: db,
+		Interval: time.Hour,
+		Bare:     true,
+		Home:     home,
+		Repos: []Repo{{
+			Name:       "seed",
+			URI:        src,
+			Branch:     "main",
+			WebURL:     "https://github.com/alice/seed",
+			WebURLType: "github",
+		}},
+	}
+
+	cycle(c)
+
+	repo := shardRepoByName(t, db, "seed")
+	if repo.URL != "https://github.com/alice/seed" {
+		t.Fatalf("url: got %q", repo.URL)
+	}
+	if !strings.Contains(repo.CommitURLTemplate, "https://github.com/alice/seed") {
+		t.Fatalf("commit template: got %q", repo.CommitURLTemplate)
+	}
+	if !strings.Contains(repo.FileURLTemplate, "https://github.com/alice/seed") {
+		t.Fatalf("file template: got %q", repo.FileURLTemplate)
+	}
+}
+
 func TestCfgFromValidation(t *testing.T) {
 	t.Setenv("HOME", "/tmp/test")
 
@@ -573,6 +681,12 @@ func TestCfgFromBasic(t *testing.T) {
 	}
 	if got.Repos[0].Name != "foo" {
 		t.Errorf("repo name: got %q", got.Repos[0].Name)
+	}
+	if got.Repos[0].WebURL != "https://github.com/alice/foo" {
+		t.Errorf("repo web url: got %q", got.Repos[0].WebURL)
+	}
+	if got.Repos[0].WebURLType != "github" {
+		t.Errorf("repo web url type: got %q", got.Repos[0].WebURLType)
 	}
 	if !slices.Contains([]string(got.Env), "FROM_SHELL=shell") {
 		t.Errorf("expected shell env precedence, got %v", got.Env)

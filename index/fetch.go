@@ -15,9 +15,11 @@ import (
 
 // repo describes a managed repo to keep updated
 type Repo struct {
-	Name   string
-	URI    string // origin URI
-	Branch string
+	Name       string
+	URI        string // origin URI
+	Branch     string
+	WebURL     string
+	WebURLType string
 }
 
 type CmdEnv []string
@@ -60,6 +62,9 @@ func syncBareRepo(path string, r Repo, env CmdEnv) error {
 	if err := setZoektName(path, env, r.Name); err != nil {
 		return err
 	}
+	if err := setWebMetadata(path, env, r.WebURL, r.WebURLType); err != nil {
+		return err
+	}
 	if err := setManagedMarker(path, env); err != nil {
 		return err
 	}
@@ -88,6 +93,9 @@ func syncWorktreeRepo(path string, r Repo, env CmdEnv) error {
 		return err
 	}
 	if err := setZoektName(path, env, r.Name); err != nil {
+		return err
+	}
+	if err := setWebMetadata(path, env, r.WebURL, r.WebURLType); err != nil {
 		return err
 	}
 	if err := setManagedMarker(path, env); err != nil {
@@ -153,6 +161,19 @@ func setZoektName(path string, env CmdEnv, name string) error {
 	return setRepoConfig(path, env, "zoekt.name", name)
 }
 
+func setWebMetadata(path string, env CmdEnv, webURL, webURLType string) error {
+	if webURL == "" || webURLType == "" {
+		if err := unsetRepoConfig(path, env, "zoekt.web-url"); err != nil {
+			return err
+		}
+		return unsetRepoConfig(path, env, "zoekt.web-url-type")
+	}
+	if err := setRepoConfig(path, env, "zoekt.web-url", webURL); err != nil {
+		return err
+	}
+	return setRepoConfig(path, env, "zoekt.web-url-type", webURLType)
+}
+
 func setManagedMarker(path string, env CmdEnv) error {
 	return setRepoConfig(path, env, "miroir.managed", "true")
 }
@@ -166,6 +187,17 @@ func setRepoConfig(path string, env CmdEnv, key, value string) error {
 		return nil
 	}
 	return git(path, env, "config", key, value)
+}
+
+func unsetRepoConfig(path string, env CmdEnv, key string) error {
+	_, ok, err := repoConfig(path, env, key)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return nil
+	}
+	return git(path, env, "config", "--unset-all", key)
 }
 
 func remoteURL(path string, env CmdEnv, name string) (string, bool, error) {

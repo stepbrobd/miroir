@@ -6,6 +6,7 @@ import (
 	"maps"
 	"net/http"
 	"os"
+	"path"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -68,7 +69,14 @@ func CfgFrom(c *config.Config) (*Cfg, error) {
 				continue
 			}
 			uri := workspace.MakeURI(p.Access, p.Domain, p.User, name)
-			repos = append(repos, Repo{Name: name, URI: uri, Branch: branch})
+			webURL, webURLType := repoWebMetadata(p, name)
+			repos = append(repos, Repo{
+				Name:       name,
+				URI:        uri,
+				Branch:     branch,
+				WebURL:     webURL,
+				WebURLType: webURLType,
+			})
 			break
 		}
 	}
@@ -83,6 +91,29 @@ func CfgFrom(c *config.Config) (*Cfg, error) {
 		Home:     filepath.Clean(home),
 		Repos:    repos,
 	}, nil
+}
+
+func repoWebMetadata(p config.Platform, repo string) (string, string) {
+	forge := config.ResolveForge(p)
+	if forge == nil {
+		return "", ""
+	}
+
+	var webURLType string
+	switch *forge {
+	case config.Github:
+		webURLType = "github"
+	case config.Gitlab:
+		webURLType = "gitlab"
+	case config.Codeberg:
+		webURLType = "gitea"
+	case config.Sourcehut:
+		webURLType = "cgit"
+	default:
+		return "", ""
+	}
+
+	return fmt.Sprintf("https://%s/%s", p.Domain, path.Join(p.User, repo)), webURLType
 }
 
 func mergeEnv(extra map[string]string) CmdEnv {
@@ -211,6 +242,9 @@ func cycle(c *Cfg) {
 		if err := IndexRepo(p, c.Database, r.Name, nil); err != nil {
 			log.Error("index failed", "repo", r.Name, "err", err)
 			continue
+		}
+		if err := cleanupManagedShardsForRepo(c.Database, p, r.Name); err != nil {
+			log.Error("cleanup managed shards failed", "repo", r.Name, "err", err)
 		}
 		n++
 	}

@@ -133,6 +133,53 @@ func cleanupShards(c *Cfg, discovered []string, includeReady bool) error {
 	return nil
 }
 
+func cleanupManagedShardsForRepo(database, repoPath, expectedName string) error {
+	entries, err := os.ReadDir(database)
+	if os.IsNotExist(err) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+
+	repoPath = filepath.Clean(repoPath)
+	for _, entry := range entries {
+		if entry.IsDir() || filepath.Ext(entry.Name()) != ".zoekt" {
+			continue
+		}
+		shard := filepath.Join(database, entry.Name())
+		repos, _, err := zoektindex.ReadMetadataPath(shard)
+		if err != nil {
+			return err
+		}
+
+		remove := false
+		for _, repo := range repos {
+			if filepath.Clean(repo.Source) != repoPath {
+				continue
+			}
+			if repo.Name != expectedName {
+				remove = true
+				break
+			}
+		}
+		if !remove {
+			continue
+		}
+		paths, err := zoektindex.IndexFilePaths(shard)
+		if err != nil {
+			return err
+		}
+		for _, path := range paths {
+			if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+				return err
+			}
+		}
+		log.Info("removed stale managed shard", "path", shard, "repo", expectedName)
+	}
+	return nil
+}
+
 func isIncludedSource(source string, include []string) bool {
 	for _, base := range include {
 		rel, err := filepath.Rel(filepath.Clean(base), source)
