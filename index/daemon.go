@@ -15,7 +15,7 @@ import (
 	"github.com/sourcegraph/zoekt/search"
 	"github.com/sourcegraph/zoekt/web"
 
-	"ysun.co/miroir/internal/config"
+	"ysun.co/miroir/config"
 	"ysun.co/miroir/workspace"
 )
 

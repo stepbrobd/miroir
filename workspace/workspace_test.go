@@ -4,7 +4,7 @@ import (
 	"os"
 	"testing"
 
-	"ysun.co/miroir/internal/config"
+	"ysun.co/miroir/config"
 )
 
 func TestMakeURI(t *testing.T) {

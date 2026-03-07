@@ -23,7 +23,14 @@
             root = ./.;
             fileset = unions [
               ./cmd
-              ./internal
+              ./config
+              ./display
+              ./forge
+              ./gitops
+              ./index
+              ./miroir
+              ./report
+              ./workspace
               ./go.mod
               ./go.sum
             ];

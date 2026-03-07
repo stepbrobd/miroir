@@ -1,7 +1,7 @@
 package git
 
 import (
-	"ysun.co/miroir/internal/display"
+	"ysun.co/miroir/report"
 	"ysun.co/miroir/workspace"
 )
 
@@ -15,7 +15,7 @@ type Op interface {
 type Params struct {
 	Path  string
 	Ctx   *workspace.Context
-	Disp  *display.Display
+	Disp  report.Reporter
 	Slot  int
 	Sem   chan struct{} // bounds concurrent remote operations
 	Force bool

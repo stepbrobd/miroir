@@ -1,3 +1,4 @@
+// Package display provides the default terminal and log-based reporter for miroir.
 package display
 
 import (

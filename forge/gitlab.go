@@ -7,7 +7,7 @@ import (
 	"strings"
 
 	gl "gitlab.com/gitlab-org/api/client-go"
-	"ysun.co/miroir/internal/config"
+	"ysun.co/miroir/config"
 )
 
 type glForge struct {

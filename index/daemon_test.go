@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"ysun.co/miroir/internal/config"
+	"ysun.co/miroir/config"
 )
 
 // seedRepoWithFile creates a git repo with one committed file.

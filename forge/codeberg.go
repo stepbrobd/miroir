@@ -7,7 +7,7 @@ import (
 	"sync"
 
 	"code.gitea.io/sdk/gitea"
-	"ysun.co/miroir/internal/config"
+	"ysun.co/miroir/config"
 )
 
 type cbForge struct {

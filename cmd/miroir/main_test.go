@@ -7,7 +7,7 @@ import (
 
 	"github.com/adrg/xdg"
 
-	"ysun.co/miroir/internal/config"
+	"ysun.co/miroir/config"
 	"ysun.co/miroir/miroir"
 	"ysun.co/miroir/workspace"
 )

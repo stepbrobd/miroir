@@ -7,7 +7,7 @@ import (
 	"strings"
 
 	graphql "github.com/hasura/go-graphql-client"
-	"ysun.co/miroir/internal/config"
+	"ysun.co/miroir/config"
 )
 
 const srhtEndpoint = "https://git.sr.ht/query"

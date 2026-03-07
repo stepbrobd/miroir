@@ -8,8 +8,8 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
-	"ysun.co/miroir/internal/config"
-	"ysun.co/miroir/internal/git"
+	"ysun.co/miroir/config"
+	"ysun.co/miroir/gitops"
 	"ysun.co/miroir/miroir"
 	"ysun.co/miroir/workspace"
 )

@@ -4,7 +4,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"ysun.co/miroir/internal/config"
+	"ysun.co/miroir/config"
 	"ysun.co/miroir/workspace"
 )
 

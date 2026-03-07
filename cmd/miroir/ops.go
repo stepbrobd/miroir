@@ -3,54 +3,20 @@ package main
 import (
 	"context"
 	"fmt"
-	"maps"
 	"os"
 	"os/signal"
 	"path/filepath"
-	"slices"
 	"strings"
-	"sync"
 	"syscall"
-	"time"
 
-	"github.com/charmbracelet/log"
 	"github.com/spf13/cobra"
 
-	"ysun.co/miroir/internal/config"
-	"ysun.co/miroir/internal/display"
-	"ysun.co/miroir/internal/forge"
-	"ysun.co/miroir/internal/git"
-	"ysun.co/miroir/internal/index"
+	"ysun.co/miroir/display"
+	"ysun.co/miroir/gitops"
+	"ysun.co/miroir/index"
 	"ysun.co/miroir/miroir"
 	"ysun.co/miroir/workspace"
 )
-
-const syncTimeout = 30 * time.Second
-
-type repoErr struct {
-	repo string
-	msg  string
-}
-
-type repoRemoteErr struct {
-	repo   string
-	remote string
-	msg    string
-}
-
-func reportRepoErrors(errs []repoErr) error {
-	for _, err := range errs {
-		log.Error("operation failed", "repo", err.repo, "error", err.msg)
-	}
-	return fmt.Errorf("%d operation(s) failed", len(errs))
-}
-
-func reportRepoRemoteErrors(errs []repoRemoteErr) error {
-	for _, err := range errs {
-		log.Error("sync failed", "repo", err.repo, "remote", err.remote, "error", err.msg)
-	}
-	return fmt.Errorf("%d repo(s) failed to sync", len(errs))
-}
 
 func gitCmd(use, short string, op git.Op) *cobra.Command {
 	return &cobra.Command{
@@ -114,208 +80,17 @@ func init() {
 }
 
 func runOn(op git.Op, force bool, extra []string) error {
-	nr := op.Remotes(len(cfg.Platform))
-
-	var errs []repoErr
-	var errMu sync.Mutex
-	addErr := func(repo, msg string) {
-		errMu.Lock()
-		errs = append(errs, repoErr{repo: repo, msg: msg})
-		errMu.Unlock()
-	}
-
-	if nr == 0 {
-		disp := display.New(1, 0, display.DefaultTheme, ttyOverride())
-		sem := make(chan struct{}, 1)
-		for _, target := range targets {
-			err := op.Run(git.Params{
-				Path: target, Ctx: ctxs[target], Disp: disp,
-				Slot: 0, Sem: sem, Force: force, Args: extra,
-			})
-			if err != nil {
-				name := filepath.Base(target)
-				addErr(name, err.Error())
-				disp.Error(0, fmt.Sprintf("error: %s", err))
-			}
-		}
-		disp.Finish()
-	} else {
-		nrepos := len(targets)
-		rc := min(cfg.General.Concurrency.Repo, nrepos)
-		rcRemote := cfg.General.Concurrency.Remote
-		mc := nr
-		if rcRemote > 0 {
-			mc = min(rcRemote, nr)
-		}
-
-		disp := display.New(rc, nr, display.DefaultTheme, ttyOverride())
-		pool := make(chan int, rc)
-		for i := range rc {
-			pool <- i
-		}
-		sem := make(chan struct{}, mc)
-
-		var wg sync.WaitGroup
-		for _, target := range targets {
-			wg.Add(1)
-			go func(target string) {
-				defer wg.Done()
-				slot := <-pool
-				defer func() { pool <- slot }()
-				disp.Clear(slot)
-
-				err := op.Run(git.Params{
-					Path: target, Ctx: ctxs[target], Disp: disp,
-					Slot: slot, Sem: sem, Force: force, Args: extra,
-				})
-				if err != nil {
-					name := filepath.Base(target)
-					addErr(name, err.Error())
-					disp.Error(slot, fmt.Sprintf("error: %s", err))
-				}
-			}(target)
-		}
-		wg.Wait()
-		disp.Finish()
-	}
-
-	if len(errs) > 0 {
-		return reportRepoErrors(errs)
-	}
-	return nil
-}
-
-type remoteErr struct {
-	remote string
-	msg    string
-}
-
-func syncRepo(disp *display.Display, slot int, sem chan struct{}, name string) []remoteErr {
-	repo, ok := cfg.Repo[name]
-	if !ok {
-		disp.Repo(slot, fmt.Sprintf("%s :: sync :: no repo config", name))
-		repo = config.Repo{Visibility: config.Private}
-	}
-	disp.Repo(slot, fmt.Sprintf("%s :: sync", name))
-
-	pnames := slices.Sorted(maps.Keys(cfg.Platform))
-	var (
-		mu   sync.Mutex
-		errs []remoteErr
-		wg   sync.WaitGroup
-	)
-
-	for j, pname := range pnames {
-		wg.Add(1)
-		go func(j int, pname string, p config.Platform) {
-			defer wg.Done()
-			disp.Remote(slot, j, fmt.Sprintf("%s :: waiting...", pname))
-			sem <- struct{}{}
-			defer func() { <-sem }()
-
-			f := config.ResolveForge(p)
-			t := config.ResolveToken(pname, p)
-			if f == nil {
-				disp.Remote(slot, j, fmt.Sprintf("%s :: skipped", pname))
-				disp.Output(slot, j, "unknown forge")
-				return
-			}
-			if t == nil {
-				disp.Remote(slot, j, fmt.Sprintf("%s :: skipped", pname))
-				disp.Output(slot, j, "no token")
-				return
-			}
-
-			disp.Remote(slot, j, fmt.Sprintf("%s :: syncing...", pname))
-			impl, err := forge.Dispatch(*f, *t, p.Domain)
-			if err != nil {
-				disp.ErrorRemote(slot, j, fmt.Sprintf("%s :: error", pname))
-				disp.ErrorOutput(slot, j, err.Error())
-				mu.Lock()
-				errs = append(errs, remoteErr{pname, err.Error()})
-				mu.Unlock()
-				return
-			}
-			ctx, cancel := context.WithTimeout(context.Background(), syncTimeout)
-			defer cancel()
-			meta := forge.Meta{
-				Name:     name,
-				Desc:     repo.Description,
-				Vis:      repo.Visibility,
-				Archived: repo.Archived,
-			}
-			if err := impl.Sync(ctx, p.User, meta); err != nil {
-				disp.ErrorRemote(slot, j, fmt.Sprintf("%s :: error", pname))
-				disp.ErrorOutput(slot, j, err.Error())
-				mu.Lock()
-				errs = append(errs, remoteErr{pname, err.Error()})
-				mu.Unlock()
-			} else {
-				disp.Remote(slot, j, fmt.Sprintf("%s :: done", pname))
-				disp.Output(slot, j, fmt.Sprintf("synced on %s", f))
-			}
-		}(j, pname, cfg.Platform[pname])
-	}
-	wg.Wait()
-
-	return errs
-}
-
-// includes archived repos (unlike selectTargets which uses ctxs)
-func syncNames() ([]string, error) {
-	return miroir.SyncNames(cfg, miroir.SelectOptions{Name: nameFlag, All: allFlag})
+	disp := display.New(min(cfg.General.Concurrency.Repo, max(1, len(targets))), op.Remotes(len(cfg.Platform)), display.DefaultTheme, ttyOverride())
+	return miroir.RunGitOp(op, miroir.SelectRunOptions(cfg, targets, ctxs, disp, force, extra))
 }
 
 func runSync() error {
-	names, err := syncNames()
+	names, err := miroir.SyncNames(cfg, miroir.SelectOptions{Name: nameFlag, All: allFlag})
 	if err != nil {
 		return err
 	}
-
-	nrepos := len(names)
-	nremotes := len(cfg.Platform)
-	rc := min(cfg.General.Concurrency.Repo, nrepos)
-	rcRemote := cfg.General.Concurrency.Remote
-	mc := nremotes
-	if rcRemote > 0 {
-		mc = min(rcRemote, nremotes)
-	}
-
-	disp := display.New(rc, nremotes, display.DefaultTheme, ttyOverride())
-	pool := make(chan int, rc)
-	for i := range rc {
-		pool <- i
-	}
-	sem := make(chan struct{}, mc)
-
-	var (
-		errs  []repoRemoteErr
-		errMu sync.Mutex
-		wg    sync.WaitGroup
-	)
-
-	for _, name := range names {
-		wg.Add(1)
-		go func(name string) {
-			defer wg.Done()
-			slot := <-pool
-			defer func() { pool <- slot }()
-			disp.Clear(slot)
-
-			for _, re := range syncRepo(disp, slot, sem, name) {
-				errMu.Lock()
-				errs = append(errs, repoRemoteErr{name, re.remote, re.msg})
-				errMu.Unlock()
-			}
-		}(name)
-	}
-	wg.Wait()
-	disp.Finish()
-
-	if len(errs) > 0 {
-		return reportRepoRemoteErrors(errs)
-	}
-	return nil
+	disp := display.New(min(cfg.General.Concurrency.Repo, max(1, len(names))), len(cfg.Platform), display.DefaultTheme, ttyOverride())
+	return miroir.RunSync(cfg, names, disp)
 }
 
 func runSweep() error {

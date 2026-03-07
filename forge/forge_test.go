@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"testing"
 
-	"ysun.co/miroir/internal/config"
+	"ysun.co/miroir/config"
 )
 
 func TestDispatchGithub(t *testing.T) {

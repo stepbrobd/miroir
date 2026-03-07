@@ -1,3 +1,4 @@
+// Package config defines miroir configuration types and parsing helpers.
 package config
 
 import (

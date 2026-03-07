@@ -6,7 +6,7 @@ import (
 	"net/http"
 
 	gh "github.com/google/go-github/v84/github"
-	"ysun.co/miroir/internal/config"
+	"ysun.co/miroir/config"
 )
 
 type ghForge struct {
