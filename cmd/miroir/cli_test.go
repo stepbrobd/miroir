@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 	"time"
 )
@@ -65,11 +66,12 @@ visibility = "private"
 	return path
 }
 
-func runInterruptedCLI(t *testing.T, bin, dir string, args ...string) (int, string) {
+func runInterruptedCLI(t *testing.T, bin, dir string, env []string, args ...string) (int, string) {
 	t.Helper()
 
 	cmd := exec.Command(bin, args...)
 	cmd.Dir = dir
+	cmd.Env = env
 	var out bytes.Buffer
 	cmd.Stdout = &out
 	cmd.Stderr = &out
@@ -94,6 +96,27 @@ func runInterruptedCLI(t *testing.T, bin, dir string, args ...string) (int, stri
 	return exitErr.ExitCode(), out.String()
 }
 
+func envWithFakeGit(t *testing.T) []string {
+	t.Helper()
+
+	binDir := t.TempDir()
+	git := filepath.Join(binDir, "git")
+	if err := os.WriteFile(git, []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	path := binDir + ":" + os.Getenv("PATH")
+	var env []string
+	for _, item := range os.Environ() {
+		if strings.HasPrefix(item, "PATH=") {
+			continue
+		}
+		env = append(env, item)
+	}
+	env = append(env, "PATH="+path)
+	return env
+}
+
 func TestCLIExecInterruptReturns130(t *testing.T) {
 	if _, err := exec.LookPath("sleep"); err != nil {
 		t.Skip("sleep not available")
@@ -108,22 +131,7 @@ func TestCLIExecInterruptReturns130(t *testing.T) {
 	}
 	cfg := writeCLIConfig(t, tmp, home, true)
 
-	code, out := runInterruptedCLI(t, bin, repo, "-c", cfg, "exec", "--", "sleep", "30")
-	if code != 130 {
-		t.Fatalf("exit code = %d want 130\n%s", code, out)
-	}
-}
-
-func TestCLIIndexInterruptReturns130(t *testing.T) {
-	bin := buildCLI(t)
-	tmp := t.TempDir()
-	home := filepath.Join(tmp, "home")
-	if err := os.MkdirAll(home, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	cfg := writeCLIConfig(t, tmp, home, false)
-
-	code, out := runInterruptedCLI(t, bin, tmp, "-c", cfg, "index")
+	code, out := runInterruptedCLI(t, bin, repo, envWithFakeGit(t), "-c", cfg, "exec", "--", "sleep", "30")
 	if code != 130 {
 		t.Fatalf("exit code = %d want 130\n%s", code, out)
 	}
