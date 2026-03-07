@@ -211,3 +211,29 @@ func TestSelectTargetsNotManaged(t *testing.T) {
 		t.Fatal("expected error when cwd is not a managed repo")
 	}
 }
+
+func TestSelectTargetsRejectsNestedManagedRepo(t *testing.T) {
+	t.Setenv("HOME", "/home/test")
+	cfg = &config.Config{General: config.General{Home: "/home/test/ws"}}
+	ctxs = map[string]*context.Context{
+		"/home/test/ws/group/alpha": {},
+	}
+
+	_, err := selectTargets()
+	if err == nil {
+		t.Fatal("expected error for nested managed repo path")
+	}
+}
+
+func TestSelectTargetsRejectsManagedRepoOutsideWorkspace(t *testing.T) {
+	t.Setenv("HOME", "/home/test")
+	cfg = &config.Config{General: config.General{Home: "/home/test/ws"}}
+	ctxs = map[string]*context.Context{
+		"/home/test/other/alpha": {},
+	}
+
+	_, err := selectTargets()
+	if err == nil {
+		t.Fatal("expected error for managed repo outside workspace")
+	}
+}

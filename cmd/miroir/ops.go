@@ -13,6 +13,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/charmbracelet/log"
 	"github.com/spf13/cobra"
 
 	"ysun.co/miroir/internal/config"
@@ -24,6 +25,31 @@ import (
 )
 
 const syncTimeout = 30 * time.Second
+
+type repoErr struct {
+	repo string
+	msg  string
+}
+
+type repoRemoteErr struct {
+	repo   string
+	remote string
+	msg    string
+}
+
+func reportRepoErrors(errs []repoErr) error {
+	for _, err := range errs {
+		log.Error("operation failed", "repo", err.repo, "error", err.msg)
+	}
+	return fmt.Errorf("%d operation(s) failed", len(errs))
+}
+
+func reportRepoRemoteErrors(errs []repoRemoteErr) error {
+	for _, err := range errs {
+		log.Error("sync failed", "repo", err.repo, "remote", err.remote, "error", err.msg)
+	}
+	return fmt.Errorf("%d repo(s) failed to sync", len(errs))
+}
 
 func gitCmd(use, short string, op git.Op) *cobra.Command {
 	return &cobra.Command{
@@ -89,11 +115,11 @@ func init() {
 func runOn(op git.Op, force bool, extra []string) error {
 	nr := op.Remotes(len(cfg.Platform))
 
-	var errs []struct{ repo, msg string }
+	var errs []repoErr
 	var errMu sync.Mutex
 	addErr := func(repo, msg string) {
 		errMu.Lock()
-		errs = append(errs, struct{ repo, msg string }{repo, msg})
+		errs = append(errs, repoErr{repo: repo, msg: msg})
 		errMu.Unlock()
 	}
 
@@ -108,7 +134,7 @@ func runOn(op git.Op, force bool, extra []string) error {
 			if err != nil {
 				name := filepath.Base(target)
 				addErr(name, err.Error())
-				errorf("%s :: %s", name, err)
+				disp.Error(0, fmt.Sprintf("error: %s", err))
 			}
 		}
 		disp.Finish()
@@ -153,14 +179,7 @@ func runOn(op git.Op, force bool, extra []string) error {
 	}
 
 	if len(errs) > 0 {
-		fmt.Fprintln(os.Stderr)
-		style := display.DefaultTheme.Error
-		fmt.Fprintln(os.Stderr, style.Render("error:"))
-		for _, e := range errs {
-			fmt.Fprintln(os.Stderr, style.Render(fmt.Sprintf("  %s", e.repo)))
-			fmt.Fprintln(os.Stderr, style.Render(fmt.Sprintf("    %s", e.msg)))
-		}
-		return fmt.Errorf("%d operation(s) failed", len(errs))
+		return reportRepoErrors(errs)
 	}
 	return nil
 }
@@ -291,11 +310,6 @@ func runSync() error {
 	}
 	sem := make(chan struct{}, mc)
 
-	type repoRemoteErr struct {
-		repo   string
-		remote string
-		msg    string
-	}
 	var (
 		errs  []repoRemoteErr
 		errMu sync.Mutex
@@ -321,14 +335,7 @@ func runSync() error {
 	disp.Finish()
 
 	if len(errs) > 0 {
-		fmt.Fprintln(os.Stderr)
-		style := display.DefaultTheme.Error
-		fmt.Fprintln(os.Stderr, style.Render("error:"))
-		for _, e := range errs {
-			fmt.Fprintln(os.Stderr, style.Render(fmt.Sprintf("  %s :: %s", e.repo, e.remote)))
-			fmt.Fprintln(os.Stderr, style.Render(fmt.Sprintf("    %s", e.msg)))
-		}
-		return fmt.Errorf("%d repo(s) failed to sync", len(errs))
+		return reportRepoRemoteErrors(errs)
 	}
 	return nil
 }
