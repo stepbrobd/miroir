@@ -55,12 +55,6 @@ func (Init) Run(p Params) error {
 		return err
 	}
 
-	info("updating submodules...")
-	if err := run(p.Path, p.Ctx.Env, false, out,
-		"submodule", "update", "--recursive", "--init"); err != nil {
-		return err
-	}
-
 	info("resetting...")
 	if err := run(p.Path, p.Ctx.Env, false, out,
 		"reset", "--hard", "origin/"+p.Ctx.Branch); err != nil {
@@ -70,6 +64,12 @@ func (Init) Run(p Params) error {
 	info("checking out...")
 	if err := run(p.Path, p.Ctx.Env, false, out,
 		"checkout", p.Ctx.Branch); err != nil {
+		return err
+	}
+
+	info("updating submodules...")
+	if err := run(p.Path, p.Ctx.Env, false, out,
+		"submodule", "update", "--recursive", "--init"); err != nil {
 		return err
 	}
 

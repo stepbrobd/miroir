@@ -113,3 +113,68 @@ func TestPullForceRemovesUntrackedConflict(t *testing.T) {
 		t.Fatalf("local head = %s want %s", out, want)
 	}
 }
+
+func TestInitPopulatesSubmodules(t *testing.T) {
+	if err := Available(); err != nil {
+		t.Skip("git not available")
+	}
+
+	tmp := t.TempDir()
+	env := append(gitEnv(), "GIT_ALLOW_PROTOCOL=file")
+
+	sub := filepath.Join(tmp, "sub")
+	if err := os.MkdirAll(sub, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := run(sub, env, true, nil, "init", "--initial-branch=main"); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(sub, "file.txt"), []byte("sub\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := run(sub, env, true, nil, "add", "file.txt"); err != nil {
+		t.Fatal(err)
+	}
+	if err := run(sub, env, true, nil, "commit", "-m", "init submodule"); err != nil {
+		t.Fatal(err)
+	}
+
+	parent := filepath.Join(tmp, "parent")
+	if err := os.MkdirAll(parent, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := run(parent, env, true, nil, "init", "--initial-branch=main"); err != nil {
+		t.Fatal(err)
+	}
+	if err := run(parent, env, true, nil,
+		"-c", "protocol.file.allow=always", "submodule", "add", sub, "deps/sub"); err != nil {
+		t.Fatal(err)
+	}
+	if err := run(parent, env, true, nil, "add", "."); err != nil {
+		t.Fatal(err)
+	}
+	if err := run(parent, env, true, nil, "commit", "-m", "add submodule"); err != nil {
+		t.Fatal(err)
+	}
+
+	local := filepath.Join(tmp, "local")
+	v := false
+	disp := display.New(1, 1, display.DefaultTheme, &v)
+	err := Init{}.Run(Params{
+		Path: local,
+		Ctx: &workspace.Context{
+			Env:    env,
+			Branch: "main",
+			Fetch:  []workspace.Remote{{Name: "origin", GitName: "origin", URI: parent}},
+			Push:   []workspace.Remote{{Name: "origin", GitName: "origin", URI: parent}},
+		},
+		Disp: disp,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := os.Stat(filepath.Join(local, "deps", "sub", "file.txt")); err != nil {
+		t.Fatalf("expected populated submodule: %v", err)
+	}
+}
