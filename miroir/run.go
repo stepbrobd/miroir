@@ -10,7 +10,6 @@ import (
 
 	"ysun.co/miroir/config"
 	"ysun.co/miroir/gitops"
-	"ysun.co/miroir/report"
 	"ysun.co/miroir/workspace"
 )
 
@@ -23,7 +22,7 @@ type RunOptions struct {
 	RemoteConcurrency int
 	Force             bool
 	Args              []string
-	Reporter          report.Reporter
+	Reporter          git.Reporter
 }
 
 type repoErr struct {
@@ -115,7 +114,7 @@ func min(a, b int) int {
 }
 
 // SelectRunOptions builds RunOptions from config, targets, and a reporter.
-func SelectRunOptions(cfg *config.Config, targets []string, ctxs map[string]*workspace.Context, reporter report.Reporter, force bool, args []string) RunOptions {
+func SelectRunOptions(cfg *config.Config, targets []string, ctxs map[string]*workspace.Context, reporter git.Reporter, force bool, args []string) RunOptions {
 	return RunOptions{
 		Targets:           targets,
 		Contexts:          ctxs,

@@ -13,7 +13,7 @@ import (
 
 	"ysun.co/miroir/config"
 	"ysun.co/miroir/forge"
-	"ysun.co/miroir/report"
+	git "ysun.co/miroir/gitops"
 )
 
 const syncTimeout = 30 * time.Second
@@ -36,7 +36,7 @@ func reportRepoRemoteErrors(errs []repoRemoteErr) error {
 	return fmt.Errorf("%d repo(s) failed to sync", len(errs))
 }
 
-func syncRepo(cfg *config.Config, disp report.Reporter, slot int, sem chan struct{}, name string) []remoteErr {
+func syncRepo(cfg *config.Config, disp git.Reporter, slot int, sem chan struct{}, name string) []remoteErr {
 	repo, ok := cfg.Repo[name]
 	if !ok {
 		disp.Repo(slot, fmt.Sprintf("%s :: sync :: no repo config", name))
@@ -108,7 +108,7 @@ func syncRepo(cfg *config.Config, disp report.Reporter, slot int, sem chan struc
 }
 
 // RunSync syncs repo metadata to all configured forges for the given names.
-func RunSync(cfg *config.Config, names []string, disp report.Reporter) error {
+func RunSync(cfg *config.Config, names []string, disp git.Reporter) error {
 	nrepos := len(names)
 	nremotes := len(cfg.Platform)
 	rc := min(cfg.General.Concurrency.Repo, nrepos)

@@ -29,7 +29,6 @@
               ./gitops
               ./index
               ./miroir
-              ./report
               ./workspace
               ./go.mod
               ./go.sum
