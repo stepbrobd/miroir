@@ -9,10 +9,10 @@ import (
 
 func init() {
 	root.AddCommand(&cobra.Command{
-		Use:       "completion [bash|zsh|fish|powershell]",
+		Use:       "completion [bash|zsh|fish]",
 		Short:     "Generate shell completion script",
 		Args:      cobra.ExactArgs(1),
-		ValidArgs: []string{"bash", "zsh", "fish", "powershell"},
+		ValidArgs: []string{"bash", "zsh", "fish"},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			switch args[0] {
 			case "bash":
@@ -21,8 +21,6 @@ func init() {
 				return root.GenZshCompletion(os.Stdout)
 			case "fish":
 				return root.GenFishCompletion(os.Stdout, true)
-			case "powershell":
-				return root.GenPowerShellCompletion(os.Stdout)
 			default:
 				return fmt.Errorf("unsupported shell: %s", args[0])
 			}
