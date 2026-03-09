@@ -11,33 +11,35 @@
         };
       });
 
-      packages.default =
-        let
-          version = lib.fileContents ./version.txt;
-        in
-        pkgs.buildGoApplication {
-          meta.mainProgram = "miroir";
-          pname = "miroir";
-          inherit version;
-          src = with lib.fileset; toSource {
-            root = ./.;
-            fileset = unions [
-              ./cmd
-              ./config
-              ./display
-              ./forge
-              ./gitops
-              ./index
-              ./miroir
-              ./workspace
-              ./go.mod
-              ./go.sum
-            ];
-          };
-          modules = ./gomod2nix.toml;
-          subPackages = [ "cmd/miroir" ];
-          ldflags = [ "-X" "main.version=${version}" ];
+      packages.default = pkgs.buildGoApplication (lib.fix (finalAttrs: {
+        pname = "miroir";
+        meta.mainProgram = finalAttrs.pname;
+        version = lib.fileContents ./version.txt;
+        src = with lib.fileset; toSource {
+          root = ./.;
+          fileset = unions [
+            ./cmd
+            ./config
+            ./display
+            ./forge
+            ./gitops
+            ./index
+            ./miroir
+            ./workspace
+            ./go.mod
+            ./go.sum
+          ];
         };
+        modules = ./gomod2nix.toml;
+        subPackages = [ "cmd/miroir" ];
+        ldflags = [ "-X" "main.version=${finalAttrs.version}" ];
+        nativeBuildInputs = [ pkgs.installShellFiles ];
+        postInstall = ''
+          for shell in bash zsh fish; do
+            installShellCompletion --cmd ${finalAttrs.pname} --''${shell} <("$out/bin/${finalAttrs.pname}" completion "$shell")
+          done
+        '';
+      }));
 
       devShells.default = pkgs.mkShell {
         inputsFrom = lib.attrValues self'.packages;
