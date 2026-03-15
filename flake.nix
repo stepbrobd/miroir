@@ -7,6 +7,7 @@
         lib = with inputs; builtins // nixpkgs.lib // parts.lib;
         pkgs = import inputs.nixpkgs {
           inherit system;
+          config.allowDeprecatedx86_64Darwin = true;
           overlays = [ inputs.gomod2nix.overlays.default ];
         };
       });
