@@ -66,7 +66,6 @@
         pushd "$root" > /dev/null
 
         ${lib.getExe pkgs.deno} fmt readme.md
-        ${lib.getExe pkgs.gomod2nix}
         ${lib.getExe pkgs.go} fix ./...
         ${lib.getExe pkgs.go} fmt ./...
         ${lib.getExe pkgs.go} test -race ./...
@@ -74,6 +73,7 @@
         ${lib.getExe pkgs.nixpkgs-fmt} .
         ${lib.getExe pkgs.taplo} format **/*.toml
         ${lib.getExe' pkgs.go-tools "staticcheck"} ./...
+        ${lib.getExe' pkgs.gomod2nix "gomod2nix"}
 
         popd
       '';
