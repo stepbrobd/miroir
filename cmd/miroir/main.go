@@ -4,7 +4,9 @@ import (
 	"context"
 	"errors"
 	"os"
+	"os/signal"
 	"path/filepath"
+	"syscall"
 
 	"github.com/adrg/xdg"
 	"github.com/charmbracelet/log"
@@ -114,12 +116,15 @@ func normalizeHelpText(cmd *cobra.Command) {
 }
 
 func main() {
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
 	normalizeHelpText(root)
 	root.InitDefaultVersionFlag()
 	if flag := root.Flags().Lookup("version"); flag != nil {
 		flag.Usage = "Version for " + root.CommandPath()
 	}
-	if err := root.Execute(); err != nil {
+	if err := root.ExecuteContext(ctx); err != nil {
 		if errors.Is(err, context.Canceled) {
 			os.Exit(130)
 		}

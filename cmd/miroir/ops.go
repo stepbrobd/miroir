@@ -4,10 +4,8 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"os/signal"
 	"path/filepath"
 	"strings"
-	"syscall"
 
 	"github.com/spf13/cobra"
 
@@ -24,7 +22,7 @@ func gitCmd(use, short string, op gitops.Op) *cobra.Command {
 		Short:             short,
 		PersistentPreRunE: resolveTargets,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runOn(op, forceFlag, args)
+			return runOn(cmd.Context(), op, forceFlag, args)
 		},
 	}
 }
@@ -36,7 +34,7 @@ func init() {
 		PersistentPreRunE: resolveTargets,
 		Args:              cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runOn(gitops.Exec{}, forceFlag, args)
+			return runOn(cmd.Context(), gitops.Exec{}, forceFlag, args)
 		},
 	}
 
@@ -45,7 +43,7 @@ func init() {
 		Short:             "Sync metadata to all forges",
 		PersistentPreRunE: loadConfig,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runSync()
+			return runSync(cmd.Context())
 		},
 	}
 
@@ -63,7 +61,7 @@ func init() {
 		Short:             "Start index daemon (fetch, index, serve)",
 		PersistentPreRunE: loadConfig,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runIndex()
+			return runIndex(cmd.Context())
 		},
 	}
 
@@ -79,16 +77,12 @@ func init() {
 	)
 }
 
-func runOn(op gitops.Op, force bool, extra []string) error {
-	ctx, stop := signalContext()
-	defer stop()
+func runOn(ctx context.Context, op gitops.Op, force bool, extra []string) error {
 	disp := display.New(min(cfg.General.Concurrency.Repo, max(1, len(targets))), op.Remotes(len(cfg.Platform)), display.DefaultTheme, ttyOverride())
 	return miroir.RunGitOp(op, miroir.SelectRunOptions(ctx, cfg, targets, ctxs, disp, force, extra))
 }
 
-func runSync() error {
-	ctx, stop := signalContext()
-	defer stop()
+func runSync(ctx context.Context) error {
 	names, err := miroir.SyncNames(cfg, miroir.SelectOptions{Name: nameFlag, All: allFlag})
 	if err != nil {
 		return err
@@ -161,16 +155,10 @@ func runSweep() error {
 	return nil
 }
 
-func runIndex() error {
-	ctx, stop := signalContext()
-	defer stop()
+func runIndex(ctx context.Context) error {
 	c, err := index.CfgFrom(cfg)
 	if err != nil {
 		return err
 	}
 	return index.Run(ctx, c)
-}
-
-func signalContext() (context.Context, context.CancelFunc) {
-	return signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 }
