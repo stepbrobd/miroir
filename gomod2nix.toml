@@ -70,8 +70,8 @@ schema = 3
     hash = 'sha256-Veo9gqSs/ZHFNERzXSCtQjovaIwdr8YZkCIJ7xfTEGY='
 
   [mod.'github.com/charmbracelet/ultraviolet']
-    version = 'v0.0.0-20260309091805-903bfd0cf188'
-    hash = 'sha256-GvXTvFOCTuIPgre5EZ5gi1tc5irUPqq1G1IjnDrFjwc='
+    version = 'v0.0.0-20260316091819-b93f6a3b8502'
+    hash = 'sha256-y+5/L0yN2MbX1ktcoXZ70N4drIxWkHX+K1ce8a7OlEc='
 
   [mod.'github.com/charmbracelet/x/ansi']
     version = 'v0.11.6'
