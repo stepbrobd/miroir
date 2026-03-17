@@ -390,7 +390,7 @@ schema = 3
     hash = 'sha256-5D24A65wn7k93Jj3+918UKjB9ccmGHPBEqjD2XDB92E='
 
   [mod.'google.golang.org/genproto/googleapis/rpc']
-    version = 'v0.0.0-20260311181403-84a4fc48630c'
+    version = 'v0.0.0-20260316180232-0b37fe3546d5'
     hash = 'sha256-pnGJ+eFKWgDoT8oYp88FEOaafs+WJe3vsZHyZLSj5pU='
 
   [mod.'google.golang.org/grpc']
