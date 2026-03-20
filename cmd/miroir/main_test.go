@@ -93,7 +93,9 @@ func TestConfigPathXDG(t *testing.T) {
 
 func TestConfigPathNoConfig(t *testing.T) {
 	t.Setenv("MIROIR_CONFIG", "")
-	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	tmp := t.TempDir()
+	t.Setenv("HOME", tmp)
+	t.Setenv("XDG_CONFIG_HOME", tmp)
 	t.Setenv("XDG_CONFIG_DIRS", "")
 	xdg.Reload()
 	t.Cleanup(func() { xdg.Reload() })
