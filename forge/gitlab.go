@@ -35,7 +35,7 @@ func (g *glForge) Create(ctx context.Context, _ string, m Meta) error {
 		Name:                 &m.Name,
 		Description:          &desc,
 		Visibility:           glVis(m.Vis),
-		InitializeWithReadme: gl.Ptr(false),
+		InitializeWithReadme: new(false),
 	}, gl.WithContext(ctx))
 	if err != nil {
 		if resp != nil && resp.StatusCode == http.StatusBadRequest &&

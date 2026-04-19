@@ -256,13 +256,13 @@ func TestForgeOfDomain(t *testing.T) {
 		domain string
 		want   *Forge
 	}{
-		{"github.com", ptr(Github)},
-		{"github.example.com", ptr(Github)},
-		{"gitlab.com", ptr(Gitlab)},
-		{"gitlab.internal.co", ptr(Gitlab)},
-		{"codeberg.org", ptr(Codeberg)},
-		{"git.sr.ht", ptr(Sourcehut)},
-		{"sr.ht", ptr(Sourcehut)},
+		{"github.com", new(Github)},
+		{"github.example.com", new(Github)},
+		{"gitlab.com", new(Gitlab)},
+		{"gitlab.internal.co", new(Gitlab)},
+		{"codeberg.org", new(Codeberg)},
+		{"git.sr.ht", new(Sourcehut)},
+		{"sr.ht", new(Sourcehut)},
 		{"example.com", nil},
 	}
 	for _, tt := range tests {
@@ -408,5 +408,3 @@ access = "https"`)
 		t.Errorf("got %v, want HTTPS", cfg.Platform["test"].Access)
 	}
 }
-
-func ptr[T any](v T) *T { return &v }
