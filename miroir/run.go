@@ -132,13 +132,6 @@ func RunGitOp(op gitops.Op, opts RunOptions) error {
 	return nil
 }
 
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
-}
-
 // selectRunOptions builds runOptions from config targets and a reporter
 func SelectRunOptions(ctx context.Context, cfg *config.Config, targets []string, ctxs map[string]*workspace.Context, reporter gitops.Reporter, force bool, args []string) RunOptions {
 	return RunOptions{

@@ -132,8 +132,8 @@ func mergeEnv(extra map[string]string) CmdEnv {
 	merged := make([]string, 0, len(base)+len(extra))
 	for _, item := range base {
 		merged = append(merged, item)
-		if i := strings.IndexByte(item, '='); i >= 0 {
-			seen[item[:i]] = struct{}{}
+		if before, _, ok := strings.Cut(item, "="); ok {
+			seen[before] = struct{}{}
 		}
 	}
 	for _, key := range slices.Sorted(maps.Keys(extra)) {
