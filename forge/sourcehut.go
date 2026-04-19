@@ -182,12 +182,25 @@ func (g *srhtForge) List(ctx context.Context, _ string) ([]string, error) {
 }
 
 func (g *srhtForge) Sync(ctx context.Context, user string, m Meta) error {
-	err := g.Create(ctx, user, m)
-	if err == nil {
-		return nil
+	var q struct {
+		Me struct {
+			Repository struct {
+				ID          int
+				Description string
+				Visibility  srhtVis
+			} `graphql:"repository(name: $name)"`
+		}
 	}
-	if err != ErrExists {
+	vars := map[string]any{"name": graphql.String(m.Name)}
+	if err := g.c.Query(ctx, &q, vars); err != nil {
 		return err
+	}
+	if q.Me.Repository.ID == 0 {
+		return g.Create(ctx, user, m)
+	}
+	desc := descOrEmpty(m.Desc)
+	if q.Me.Repository.Description == desc && q.Me.Repository.Visibility == srhtVisOf(m.Vis) {
+		return nil
 	}
 	return g.Update(ctx, user, m)
 }

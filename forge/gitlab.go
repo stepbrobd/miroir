@@ -110,17 +110,29 @@ func (g *glForge) List(ctx context.Context, _ string) ([]string, error) {
 	return names, nil
 }
 
-// update does not set archived so gitlab needs a separate archive call
 func (g *glForge) Sync(ctx context.Context, user string, m Meta) error {
-	err := g.Create(ctx, user, m)
-	if err == nil {
-		return nil
-	}
-	if err != ErrExists {
+	pid := user + "/" + m.Name
+	proj, resp, err := g.c.Projects.GetProject(pid, nil, gl.WithContext(ctx))
+	if err != nil {
+		if resp != nil && resp.StatusCode == http.StatusNotFound {
+			if err := g.Create(ctx, user, m); err != nil {
+				return err
+			}
+			if m.Archived {
+				return g.Archive(ctx, user, m.Name, true)
+			}
+			return nil
+		}
 		return err
 	}
-	if err := g.Update(ctx, user, m); err != nil {
-		return err
+	desc := descOrEmpty(m.Desc)
+	if proj.Description != desc || proj.Visibility != *glVis(m.Vis) {
+		if err := g.Update(ctx, user, m); err != nil {
+			return err
+		}
 	}
-	return g.Archive(ctx, user, m.Name, m.Archived)
+	if proj.Archived != m.Archived {
+		return g.Archive(ctx, user, m.Name, m.Archived)
+	}
+	return nil
 }

@@ -108,12 +108,19 @@ func (g *cbForge) List(ctx context.Context, _ string) ([]string, error) {
 }
 
 func (g *cbForge) Sync(ctx context.Context, user string, m Meta) error {
-	err := g.Create(ctx, user, m)
-	if err == nil {
-		return nil
-	}
-	if err != ErrExists {
+	g.withCtx(ctx)
+	repo, resp, err := g.c.GetRepo(user, m.Name)
+	g.mu.Unlock()
+	if err != nil {
+		if resp != nil && resp.StatusCode == http.StatusNotFound {
+			return g.Create(ctx, user, m)
+		}
 		return err
+	}
+	desc := descOrEmpty(m.Desc)
+	priv := cbPrivate(m.Vis)
+	if repo.Description == desc && repo.Private == priv && repo.Archived == m.Archived {
+		return nil
 	}
 	return g.Update(ctx, user, m)
 }
