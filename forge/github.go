@@ -2,7 +2,6 @@ package forge
 
 import (
 	"context"
-	"errors"
 	"net/http"
 
 	gh "github.com/google/go-github/v84/github"
@@ -85,48 +84,30 @@ func (g *ghForge) List(ctx context.Context, _ string) ([]string, error) {
 	return names, nil
 }
 
-func ghIsArchived(err error) bool {
-	var e *gh.ErrorResponse
-	return errors.As(err, &e) && e.Response != nil &&
-		e.Response.StatusCode == http.StatusForbidden
-}
-
-func (g *ghForge) ghMetaMatches(ctx context.Context, user string, m Meta) (bool, error) {
-	repo, _, err := g.c.Repositories.Get(ctx, user, m.Name)
-	if err != nil {
-		return false, err
-	}
-	return repo.GetDescription() == descOrEmpty(m.Desc) &&
-		repo.GetPrivate() == ghPrivate(m.Vis), nil
-}
-
 func (g *ghForge) Sync(ctx context.Context, user string, m Meta) error {
-	err := g.Create(ctx, user, m)
-	if err == nil {
-		if m.Archived {
-			return g.Archive(ctx, user, m.Name, true)
-		}
-		return nil
-	}
-	if err != ErrExists {
-		return err
-	}
-	if err := g.Update(ctx, user, m); err != nil {
-		if !ghIsArchived(err) {
-			return err
-		}
-		// repo is archived on remote, unarchive before updating
-		if m.Archived {
-			// both sides archived, check if metadata still matches
-			match, err := g.ghMetaMatches(ctx, user, m)
-			if err != nil || match {
+	repo, resp, err := g.c.Repositories.Get(ctx, user, m.Name)
+	if err != nil {
+		if resp != nil && resp.StatusCode == http.StatusNotFound {
+			if err := g.Create(ctx, user, m); err != nil {
 				return err
 			}
+			if m.Archived {
+				return g.Archive(ctx, user, m.Name, true)
+			}
+			return nil
 		}
+		return err
+	}
+	// repo exists, check if anything needs to change
+	desc := descOrEmpty(m.Desc)
+	priv := ghPrivate(m.Vis)
+	if repo.GetDescription() == desc && repo.GetPrivate() == priv && repo.GetArchived() == m.Archived {
+		return nil
+	}
+	if repo.GetArchived() {
 		if err := g.Archive(ctx, user, m.Name, false); err != nil {
 			return err
 		}
-		return g.Update(ctx, user, m)
 	}
-	return nil
+	return g.Update(ctx, user, m)
 }
