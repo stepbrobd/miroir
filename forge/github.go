@@ -27,7 +27,7 @@ func (g *ghForge) Create(ctx context.Context, _ string, m Meta) error {
 		Name:        &m.Name,
 		Description: &desc,
 		Private:     &priv,
-		AutoInit:    gh.Ptr(false),
+		AutoInit:    new(false),
 	}
 	_, resp, err := g.c.Repositories.Create(ctx, "", repo)
 	if err != nil {
@@ -91,9 +91,21 @@ func ghIsArchived(err error) bool {
 		e.Response.StatusCode == http.StatusForbidden
 }
 
+func (g *ghForge) ghMetaMatches(ctx context.Context, user string, m Meta) (bool, error) {
+	repo, _, err := g.c.Repositories.Get(ctx, user, m.Name)
+	if err != nil {
+		return false, err
+	}
+	return repo.GetDescription() == descOrEmpty(m.Desc) &&
+		repo.GetPrivate() == ghPrivate(m.Vis), nil
+}
+
 func (g *ghForge) Sync(ctx context.Context, user string, m Meta) error {
 	err := g.Create(ctx, user, m)
 	if err == nil {
+		if m.Archived {
+			return g.Archive(ctx, user, m.Name, true)
+		}
 		return nil
 	}
 	if err != ErrExists {
@@ -103,7 +115,14 @@ func (g *ghForge) Sync(ctx context.Context, user string, m Meta) error {
 		if !ghIsArchived(err) {
 			return err
 		}
-		// repo is archived on remote so unarchive it before updating
+		// repo is archived on remote, unarchive before updating
+		if m.Archived {
+			// both sides archived, check if metadata still matches
+			match, err := g.ghMetaMatches(ctx, user, m)
+			if err != nil || match {
+				return err
+			}
+		}
 		if err := g.Archive(ctx, user, m.Name, false); err != nil {
 			return err
 		}
