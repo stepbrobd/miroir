@@ -70,8 +70,8 @@ schema = 3
     hash = 'sha256-Veo9gqSs/ZHFNERzXSCtQjovaIwdr8YZkCIJ7xfTEGY='
 
   [mod.'github.com/charmbracelet/ultraviolet']
-    version = 'v0.0.0-20260416161146-9c68a866306c'
-    hash = 'sha256-Hu5SEBQV7YckyfY/hdRgM++7xnU+waGsuVFohKz1Kk8='
+    version = 'v0.0.0-20260428153724-66037269d7be'
+    hash = 'sha256-OjHjdUtF6P9ajmX5Qqq3x3bjdUZpttBbjeAmdCEMtt0='
 
   [mod.'github.com/charmbracelet/x/ansi']
     version = 'v0.11.7'
@@ -106,8 +106,8 @@ schema = 3
     hash = 'sha256-XZm4EastgX67Dgm5BpOEW/PY4aLcHM/O8+Xbz26PuTY='
 
   [mod.'github.com/cockroachdb/errors']
-    version = 'v1.12.0'
-    hash = 'sha256-9TBKKUHDzMa/aJ/2+GMQSdp3WpK7CxuRezz2gNtmW2k='
+    version = 'v1.13.0'
+    hash = 'sha256-QfogwVHvVSPOci5o7D1XayB01DRgKwMduXGhVhyiRSs='
 
   [mod.'github.com/cockroachdb/logtags']
     version = 'v0.0.0-20241215232642-bb51bb14a506'
@@ -266,8 +266,8 @@ schema = 3
     hash = 'sha256-JC60PjKj7MvhZmUHTZ9p372FV72I9Mxvli3fivTbxuA='
 
   [mod.'github.com/mattn/go-isatty']
-    version = 'v0.0.21'
-    hash = 'sha256-B70ZCZYoajKE8xxKPh9sgyVz2URKi0EyaOX8XFDqWKw='
+    version = 'v0.0.22'
+    hash = 'sha256-6O/0jc33pKUzlzUGpH8Ekk54XgJvx6Qe7kJtbcNJAV4='
 
   [mod.'github.com/mattn/go-runewidth']
     version = 'v0.0.23'
@@ -346,16 +346,16 @@ schema = 3
     hash = 'sha256-fEGeX/V9fC3MVjY34yuL8vn00brqIoTXLAX0x4ecBzg='
 
   [mod.'github.com/sourcegraph/go-ctags']
-    version = 'v0.0.0-20250729094530-349a251d78d8'
-    hash = 'sha256-oiJkaAhWvGQ2BRgIz5LCkWTLf4q1hprIhaXSIHixQ9E='
+    version = 'v0.0.0-20260429093619-034adb2f9fec'
+    hash = 'sha256-BcJzcMmjut6ZrqhnpFOcwzr2TZB+kdL8UvXq3Gxs6zQ='
 
   [mod.'github.com/sourcegraph/log']
     version = 'v0.0.0-20250923023806-517b6960b55b'
     hash = 'sha256-Nt2XFoIQaO4qDAtK/hiYMZ3KjGLppYpsj4KqQobhhDA='
 
   [mod.'github.com/sourcegraph/zoekt']
-    version = 'v0.0.0-20260413093009-c3d4afa94960'
-    hash = 'sha256-oGLNZ/2ny2fsodw4c1nL7hypXQI4Mp5kv2sNDUH6RKk='
+    version = 'v0.0.0-20260429093855-b78f6ddf68e4'
+    hash = 'sha256-8b71ujX/2cUN95MzK3AnDhC65gSwfXJ5GQHExun6PRM='
 
   [mod.'github.com/spf13/afero']
     version = 'v1.15.0'
@@ -414,8 +414,8 @@ schema = 3
     hash = 'sha256-Lb6rHHfR62Ozg2j2JZy3MKOMKdsfzd1IYTR57r3Mhp0='
 
   [mod.'go.uber.org/zap']
-    version = 'v1.27.1'
-    hash = 'sha256-bn/MMu7X3GkUuW12Xwn9JYbOJeEu9+yoQtkmO+36xlQ='
+    version = 'v1.28.0'
+    hash = 'sha256-x+MIioLe/gBKjZyRc8shaBR5nO5Pv++8U9gHPZ5W+5A='
 
   [mod.'go.yaml.in/yaml/v2']
     version = 'v2.4.4'
@@ -462,7 +462,7 @@ schema = 3
     hash = 'sha256-5D24A65wn7k93Jj3+918UKjB9ccmGHPBEqjD2XDB92E='
 
   [mod.'google.golang.org/genproto/googleapis/rpc']
-    version = 'v0.0.0-20260414002931-afd174a4e478'
+    version = 'v0.0.0-20260427160629-7cedc36a6bc4'
     hash = 'sha256-ldJTTb7hhj1mdmzTn9IEkQVwCoj3KRlENZtUSEKHABU='
 
   [mod.'google.golang.org/grpc']
