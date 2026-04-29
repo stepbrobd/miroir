@@ -20,15 +20,16 @@ GitHub (or any other forge):
    `miroir push -a` populates them across every platform remote
 4. Mark the new forge `origin = true` and set migration source `origin = false`
 
-> [!Caution] Miroir `sync` command is reconciliation, not append. It treats your
-> config as the source of truth for every configured forge. It will set repos
-> `private` when the config says so (on GitHub this wipes stars, forks, and
-> watchers, because they are public-graph artifacts attached to the public
-> listing), flip `archived`, and overwrite descriptions. The forge layer also
-> implements repo deletion across every supported provider, so a typo or a
-> misaimed config against the wrong account can do real damage. Review your TOML
-> carefully, try a single repo end-to-end before `-a`, and keep the source forge
-> intact until you have verified the destination.
+> [!Caution]
+> Miroir `sync` command is reconciliation, not append. It treats your config as
+> the source of truth for every configured forge. It will set repos `private`
+> when the config says so (on GitHub this wipes stars, forks, and watchers,
+> because they are public-graph artifacts attached to the public listing), flip
+> `archived`, and overwrite descriptions. The forge layer also implements repo
+> deletion across every supported provider, so a typo or a misaimed config
+> against the wrong account can do real damage. Review your TOML carefully, try
+> a single repo end-to-end before `-a`, and keep the source forge intact until
+> you have verified the destination.
 
 ## Config
 
