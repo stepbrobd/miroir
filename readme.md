@@ -1,9 +1,34 @@
 # Miroir
 
+[![Garnix](https://img.shields.io/endpoint.svg?url=https%3A%2F%2Fgarnix.io%2Fapi%2Fbadges%2Fstepbrobd%2Fmiroir)](https://garnix.io/repo/stepbrobd/miroir)
+
 Declarative git repo manager and code search server. Synchronize multiple
 remotes, execute commands across repos, manage forge metadata from a single TOML
 config, and serve full-text code search via
 [zoekt](https://github.com/sourcegraph/zoekt).
+
+Miroir can double as a forge-to-forge migration tool, say, move everything off
+GitHub (or any other forge):
+
+1. Enumerate source repos via `gh repo list` (or each forge's API, or by hand)
+   and write a `[repo.*]` entry per repo into your config
+2. Add an SSH key and generate an API token for the source and each destination
+   forge, then add them as `[platform.*]` entries. Mark the migration source as
+   `origin = true`
+3. `miroir init -a` clones from the current origin, `miroir sync -a` creates the
+   destination repos with the configured description/visibility, and
+   `miroir push -a` populates them across every platform remote
+4. Mark the new forge `origin = true` and set migration source `origin = false`
+
+> [!Caution] Miroir `sync` command is reconciliation, not append. It treats your
+> config as the source of truth for every configured forge. It will set repos
+> `private` when the config says so (on GitHub this wipes stars, forks, and
+> watchers, because they are public-graph artifacts attached to the public
+> listing), flip `archived`, and overwrite descriptions. The forge layer also
+> implements repo deletion across every supported provider, so a typo or a
+> misaimed config against the wrong account can do real damage. Review your TOML
+> carefully, try a single repo end-to-end before `-a`, and keep the source forge
+> intact until you have verified the destination.
 
 ## Config
 
@@ -299,16 +324,8 @@ per-remote progress. When piped, it falls back to structured log output. The
 produces no stdout/stderr for a remote, miroir renders `[no output]` to preserve
 the output row ordering.
 
-## Development
+## License
 
-Run `nix fmt` before sending changes. It is the canonical repo check and runs
-the full verification suite, not just formatters:
-
-- `gomod2nix`
-- `go fix`
-- `go fmt`
-- `go test -race ./...`
-- `go vet ./...`
-- `nixpkgs-fmt`
-- `taplo format`
-- `staticcheck ./...`
+The contents inside this repository, excluding all submodules, are licensed
+under the [MIT License](license.txt). Third-party file(s) and/or code(s) are
+subject to their original term(s) and/or license(s).
