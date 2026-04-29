@@ -43,6 +43,11 @@ Miroir looks for config in this order:
 
 ### Example
 
+See my account's repo configuration
+[here](https://github.com/stepbrobd/inc/blob/master/repos/config.toml) or some
+screen recordings [here](https://github.com/stepbrobd/inc/issues/112) or a
+simplified version below:
+
 ```toml
 [general]
 home = "~/Workspace"
