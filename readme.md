@@ -20,6 +20,7 @@ GitHub (or any other forge):
    `miroir push -a` populates them across every platform remote
 4. Mark the new forge `origin = true` and set migration source `origin = false`
 
+<!-- deno-fmt-ignore -->
 > [!Caution]
 > Miroir `sync` command is reconciliation, not append. It treats your config as
 > the source of truth for every configured forge. It will set repos `private`
