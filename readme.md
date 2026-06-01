@@ -2,6 +2,11 @@
 
 [![Garnix](https://img.shields.io/endpoint.svg?url=https%3A%2F%2Fgarnix.io%2Fapi%2Fbadges%2Fstepbrobd%2Fmiroir)](https://garnix.io/repo/stepbrobd/miroir)
 
+Binary Cache:
+
+- Cache: <https://cache.ysun.co>
+- Key: `cache.ysun.co-1:WxPYwT5g3kt9XhUhHPpNLZKI9HIOsVVAuqSHpok8Qt4=`
+
 Declarative git repo manager and code search server. Synchronize multiple
 remotes, execute commands across repos, manage forge metadata from a single TOML
 config, and serve full-text code search via
