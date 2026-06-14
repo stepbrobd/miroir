@@ -1,6 +1,6 @@
 # Miroir
 
-[![Garnix](https://img.shields.io/endpoint.svg?url=https%3A%2F%2Fgarnix.io%2Fapi%2Fbadges%2Fstepbrobd%2Fmiroir)](https://garnix.io/repo/stepbrobd/miroir)
+[![atelier](https://github.com/stepbrobd/miroir/actions/workflows/ci.yaml/badge.svg)](https://github.com/stepbrobd/atelier)
 
 Binary Cache:
 
