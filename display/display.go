@@ -20,7 +20,6 @@ const (
 	lineRepo
 	lineRemote
 	lineOutput
-	lineError
 	lineErrorRemote
 	lineErrorOutput
 )
@@ -77,15 +76,9 @@ func New(repos, remotes int, th Theme, ttyOverride *bool) *Display {
 }
 
 func (d *Display) resetSlot(slot int) {
-	if !d.tty {
-		return
-	}
 	base := slot * d.stride
-	if base >= len(d.lines) {
-		return
-	}
 	d.lines[base] = line{}
-	for i := 1; base+i < len(d.lines) && i < d.stride; i++ {
+	for i := 1; i < d.stride; i++ {
 		if i%2 == 1 {
 			d.lines[base+i] = line{}
 			continue
@@ -94,28 +87,8 @@ func (d *Display) resetSlot(slot int) {
 	}
 }
 
-// padding is defined here, not in Theme, so error variants stay aligned
-func (d *Display) styled(k lineKind) lipgloss.Style {
-	w := d.width
-	switch k {
-	case lineRepo:
-		return d.theme.Repo.Width(w).MaxWidth(w)
-	case lineRemote:
-		return d.theme.Remote.PaddingLeft(2).Width(w).MaxWidth(w)
-	case lineOutput:
-		return d.theme.Output.PaddingLeft(4).Width(w).MaxWidth(w)
-	case lineError:
-		return d.theme.Error.Width(w).MaxWidth(w)
-	case lineErrorRemote:
-		return d.theme.Error.PaddingLeft(2).Width(w).MaxWidth(w)
-	case lineErrorOutput:
-		return d.theme.Error.PaddingLeft(4).Width(w).MaxWidth(w)
-	default:
-		return lipgloss.NewStyle().Width(w).MaxWidth(w)
-	}
-}
-
-func (d *Display) leftPad(k lineKind) int {
+// leftPad keeps error variants aligned with their plain counterparts
+func leftPad(k lineKind) int {
 	switch k {
 	case lineRemote, lineErrorRemote:
 		return 2
@@ -126,8 +99,23 @@ func (d *Display) leftPad(k lineKind) int {
 	}
 }
 
+func (d *Display) styled(k lineKind) lipgloss.Style {
+	base := lipgloss.NewStyle()
+	switch k {
+	case lineRepo:
+		base = d.theme.Repo
+	case lineRemote:
+		base = d.theme.Remote
+	case lineOutput:
+		base = d.theme.Output
+	case lineErrorRemote, lineErrorOutput:
+		base = d.theme.Error
+	}
+	return base.PaddingLeft(leftPad(k)).Width(d.width).MaxWidth(d.width)
+}
+
 func (d *Display) renderLine(l line) string {
-	w := max(1, d.width-d.leftPad(l.kind))
+	w := max(1, d.width-leftPad(l.kind))
 	return d.styled(l.kind).Render(ansi.Truncate(l.text, w, ""))
 }
 
@@ -144,29 +132,22 @@ func (d *Display) reserve(lines int) {
 	d.ready = true
 }
 
-// redraw repaints all provided lines while d.mu is held
-func (d *Display) redraw(lines []line) {
+// redraw repaints the whole grid while d.mu is held
+func (d *Display) redraw() {
 	if !d.ready {
-		d.reserve(len(lines))
+		d.reserve(len(d.lines))
 	}
 	var buf strings.Builder
 	if d.drawn > 0 {
 		fmt.Fprintf(&buf, "\x1b[%dA", d.drawn)
 	}
-	for _, l := range lines {
+	for _, l := range d.lines {
 		buf.WriteString("\x1b[2K")
 		buf.WriteString(d.renderLine(l))
 		buf.WriteByte('\n')
 	}
-	if d.drawn > len(lines) {
-		extra := d.drawn - len(lines)
-		for range extra {
-			buf.WriteString("\x1b[2K\n")
-		}
-		fmt.Fprintf(&buf, "\x1b[%dA", extra)
-	}
 	os.Stdout.WriteString(buf.String())
-	d.drawn = len(lines)
+	d.drawn = len(d.lines)
 }
 
 func normalizeOutput(msg string) string {
@@ -180,19 +161,15 @@ func normalizeOutput(msg string) string {
 func (d *Display) set(idx int, l line) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
-	if idx >= 0 && idx < len(d.lines) {
-		d.lines[idx] = l
-	}
-	d.redraw(d.lines)
+	d.lines[idx] = l
+	d.redraw()
 }
 
 func (d *Display) Repo(slot int, msg string) {
 	if d.tty {
 		d.set(slot*d.stride, line{msg, lineRepo})
 	} else {
-		d.mu.Lock()
 		d.log.Info(msg)
-		d.mu.Unlock()
 	}
 }
 
@@ -200,9 +177,7 @@ func (d *Display) Remote(slot, j int, msg string) {
 	if d.tty {
 		d.set(slot*d.stride+1+2*j, line{msg, lineRemote})
 	} else {
-		d.mu.Lock()
 		d.log.Info(msg, "indent", 1)
-		d.mu.Unlock()
 	}
 }
 
@@ -214,19 +189,7 @@ func (d *Display) Output(slot, j int, msg string) {
 		if msg == "" {
 			return
 		}
-		d.mu.Lock()
 		d.log.Info(msg, "indent", 2)
-		d.mu.Unlock()
-	}
-}
-
-func (d *Display) Error(slot int, msg string) {
-	if d.tty {
-		d.set(slot*d.stride, line{msg, lineError})
-	} else {
-		d.mu.Lock()
-		d.log.Error(msg)
-		d.mu.Unlock()
 	}
 }
 
@@ -234,9 +197,7 @@ func (d *Display) ErrorRemote(slot, j int, msg string) {
 	if d.tty {
 		d.set(slot*d.stride+1+2*j, line{msg, lineErrorRemote})
 	} else {
-		d.mu.Lock()
 		d.log.Error(msg, "indent", 1)
-		d.mu.Unlock()
 	}
 }
 
@@ -248,9 +209,7 @@ func (d *Display) ErrorOutput(slot, j int, msg string) {
 		if msg == "" {
 			return
 		}
-		d.mu.Lock()
 		d.log.Error(msg, "indent", 2)
-		d.mu.Unlock()
 	}
 }
 
@@ -259,14 +218,17 @@ func (d *Display) Clear(slot int) {
 		d.mu.Lock()
 		defer d.mu.Unlock()
 		d.resetSlot(slot)
-		d.redraw(d.lines)
+		d.redraw()
 	}
 }
 
 func (d *Display) Finish() {
 	if d.tty {
 		d.mu.Lock()
-		d.redraw(d.lines)
-		d.mu.Unlock()
+		defer d.mu.Unlock()
+		// nothing to repaint when no draw ever happened
+		if d.ready {
+			d.redraw()
+		}
 	}
 }

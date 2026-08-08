@@ -1,11 +1,59 @@
 package display
 
 import (
+	"io"
+	"os"
 	"strings"
 	"testing"
 
 	"github.com/charmbracelet/x/ansi"
 )
+
+func captureStdout(t *testing.T, f func()) string {
+	t.Helper()
+	old := os.Stdout
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	os.Stdout = w
+	f()
+	w.Close()
+	os.Stdout = old
+	b, err := io.ReadAll(r)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(b)
+}
+
+func TestGridIndexingSecondSlot(t *testing.T) {
+	v := true
+	d := New(2, 2, DefaultTheme, &v)
+	_ = captureStdout(t, func() {
+		d.Repo(1, "repo1")
+		d.Remote(1, 1, "remote11")
+		d.Output(1, 1, "out11")
+	})
+	stride := 1 + 2*2
+	if d.lines[stride].text != "repo1" {
+		t.Errorf("repo line: got %+v", d.lines[stride])
+	}
+	if d.lines[stride+3].text != "remote11" {
+		t.Errorf("remote line: got %+v", d.lines[stride+3])
+	}
+	if d.lines[stride+4].text != "out11" {
+		t.Errorf("output line: got %+v", d.lines[stride+4])
+	}
+}
+
+func TestFinishWithoutDrawEmitsNothing(t *testing.T) {
+	v := true
+	d := New(1, 1, DefaultTheme, &v)
+	if out := captureStdout(t, d.Finish); out != "" {
+		t.Fatalf("expected no output, got %q", out)
+	}
+}
 
 func TestNewHonorsTTYOverride(t *testing.T) {
 	v := false
