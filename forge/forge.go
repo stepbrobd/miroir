@@ -15,37 +15,27 @@ type Meta struct {
 	Archived bool
 }
 
-// forge abstracts forge CRUD operations
-// create returns ErrExists if the repo already exists
-// archive may return ErrUnsupported on forges without archive API
-// list returns all repos owned by the authenticated user
-// sync is create-or-update with archive handling
+// forge is the per-platform reconciliation entry point
+// sync is create-or-update with archive handling where supported
 type Forge interface {
-	Create(ctx context.Context, user string, m Meta) error
-	Update(ctx context.Context, user string, m Meta) error
-	Archive(ctx context.Context, user, name string, flag bool) error
-	Delete(ctx context.Context, user, name string) error
-	List(ctx context.Context, user string) ([]string, error)
 	Sync(ctx context.Context, user string, m Meta) error
 }
 
-var (
-	ErrExists      = errors.New("already exists")
-	ErrUnsupported = errors.New("not supported by this forge")
-)
+// create helpers return ErrExists when the repo already exists
+var ErrExists = errors.New("already exists")
 
 func Dispatch(f config.Forge, token, domain string) (Forge, error) {
 	switch f {
 	case config.Github:
-		return newGithub(token), nil
+		return newGithub(token, domain)
 	case config.Gitlab:
 		return newGitlab(token, domain)
 	case config.Codeberg:
-		return newCodeberg(token)
+		return newCodeberg(token, domain)
 	case config.Sourcehut:
-		return newSourcehut(token), nil
+		return newSourcehut(token, domain), nil
 	default:
-		return nil, fmt.Errorf("unknown forge: %v", f)
+		return nil, fmt.Errorf("unknown forge %d", int(f))
 	}
 }
 

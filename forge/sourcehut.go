@@ -3,14 +3,13 @@ package forge
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"strings"
 
 	graphql "github.com/hasura/go-graphql-client"
 	"ysun.co/miroir/config"
 )
-
-const srhtEndpoint = "https://git.sr.ht/query"
 
 type srhtForge struct {
 	c *graphql.Client
@@ -23,18 +22,14 @@ type srhtTransport struct {
 
 func (t *srhtTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	req.Header.Set("Authorization", "Bearer "+t.token)
-	base := t.base
-	if base == nil {
-		base = http.DefaultTransport
-	}
-	return base.RoundTrip(req)
+	return t.base.RoundTrip(req)
 }
 
-func newSourcehut(token string) *srhtForge {
+func newSourcehut(token, domain string) *srhtForge {
 	hc := &http.Client{
 		Transport: &srhtTransport{token: token, base: http.DefaultTransport},
 	}
-	c := graphql.NewClient(srhtEndpoint, hc)
+	c := graphql.NewClient(fmt.Sprintf("https://%s/query", domain), hc)
 	return &srhtForge{c: c}
 }
 
@@ -59,7 +54,7 @@ func srhtIsExists(err error) bool {
 	return strings.Contains(s, "already exists") || strings.Contains(s, "already in use")
 }
 
-func (g *srhtForge) Create(ctx context.Context, _ string, m Meta) error {
+func (g *srhtForge) create(ctx context.Context, m Meta) error {
 	var mut struct {
 		CreateRepository struct {
 			ID int
@@ -109,7 +104,7 @@ type repoUpdateInput struct {
 
 func (repoUpdateInput) GetGraphQLType() string { return "RepoInput" }
 
-func (g *srhtForge) Update(ctx context.Context, _ string, m Meta) error {
+func (g *srhtForge) update(ctx context.Context, m Meta) error {
 	id, err := g.repoID(ctx, m.Name)
 	if err != nil {
 		return err
@@ -129,59 +124,7 @@ func (g *srhtForge) Update(ctx context.Context, _ string, m Meta) error {
 	return g.c.Mutate(ctx, &mut, vars)
 }
 
-func (g *srhtForge) Archive(_ context.Context, _, _ string, _ bool) error {
-	return ErrUnsupported
-}
-
-func (g *srhtForge) Delete(ctx context.Context, _ string, name string) error {
-	id, err := g.repoID(ctx, name)
-	if err != nil {
-		return err
-	}
-	var mut struct {
-		DeleteRepository struct {
-			ID int
-		} `graphql:"deleteRepository(id: $id)"`
-	}
-	vars := map[string]any{
-		"id": graphql.Int(id),
-	}
-	return g.c.Mutate(ctx, &mut, vars)
-}
-
-// sourcehut GraphQL cursor-based pagination
-func (g *srhtForge) List(ctx context.Context, _ string) ([]string, error) {
-	type cursor struct {
-		Results []struct {
-			Name string
-		}
-		Cursor *string
-	}
-	var names []string
-	var after *graphql.String
-	for {
-		var q struct {
-			Me struct {
-				Repositories cursor `graphql:"repositories(cursor: $cursor)"`
-			}
-		}
-		vars := map[string]any{"cursor": after}
-		if err := g.c.Query(ctx, &q, vars); err != nil {
-			return nil, err
-		}
-		for _, r := range q.Me.Repositories.Results {
-			names = append(names, r.Name)
-		}
-		if q.Me.Repositories.Cursor == nil || len(q.Me.Repositories.Results) == 0 {
-			break
-		}
-		s := graphql.String(*q.Me.Repositories.Cursor)
-		after = &s
-	}
-	return names, nil
-}
-
-func (g *srhtForge) Sync(ctx context.Context, user string, m Meta) error {
+func (g *srhtForge) Sync(ctx context.Context, _ string, m Meta) error {
 	var q struct {
 		Me struct {
 			Repository struct {
@@ -196,11 +139,11 @@ func (g *srhtForge) Sync(ctx context.Context, user string, m Meta) error {
 		return err
 	}
 	if q.Me.Repository.ID == 0 {
-		return g.Create(ctx, user, m)
+		return g.create(ctx, m)
 	}
 	desc := descOrEmpty(m.Desc)
 	if q.Me.Repository.Description == desc && q.Me.Repository.Visibility == srhtVisOf(m.Vis) {
 		return nil
 	}
-	return g.Update(ctx, user, m)
+	return g.update(ctx, m)
 }

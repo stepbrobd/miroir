@@ -29,7 +29,7 @@ func glVis(v config.Visibility) *gl.VisibilityValue {
 	return gl.Ptr(gl.PrivateVisibility)
 }
 
-func (g *glForge) Create(ctx context.Context, _ string, m Meta) error {
+func (g *glForge) create(ctx context.Context, m Meta) error {
 	desc := descOrEmpty(m.Desc)
 	_, resp, err := g.c.Projects.CreateProject(&gl.CreateProjectOptions{
 		Name:                 &m.Name,
@@ -47,7 +47,7 @@ func (g *glForge) Create(ctx context.Context, _ string, m Meta) error {
 	return nil
 }
 
-func (g *glForge) Update(ctx context.Context, user string, m Meta) error {
+func (g *glForge) update(ctx context.Context, user string, m Meta) error {
 	pid := user + "/" + m.Name
 	desc := descOrEmpty(m.Desc)
 	_, _, err := g.c.Projects.EditProject(pid, &gl.EditProjectOptions{
@@ -65,7 +65,7 @@ func glIsAlreadyArchived(resp *gl.Response, err error) bool {
 			strings.Contains(err.Error(), "already unarchived"))
 }
 
-func (g *glForge) Archive(ctx context.Context, user, name string, flag bool) error {
+func (g *glForge) archive(ctx context.Context, user, name string, flag bool) error {
 	pid := user + "/" + name
 	if flag {
 		_, resp, err := g.c.Projects.ArchiveProject(pid, gl.WithContext(ctx))
@@ -81,45 +81,16 @@ func (g *glForge) Archive(ctx context.Context, user, name string, flag bool) err
 	return err
 }
 
-func (g *glForge) Delete(ctx context.Context, user, name string) error {
-	pid := user + "/" + name
-	_, err := g.c.Projects.DeleteProject(pid, nil, gl.WithContext(ctx))
-	return err
-}
-
-func (g *glForge) List(ctx context.Context, _ string) ([]string, error) {
-	owned := true
-	opt := &gl.ListProjectsOptions{
-		Owned:       &owned,
-		ListOptions: gl.ListOptions{PerPage: 100},
-	}
-	var names []string
-	for {
-		projs, resp, err := g.c.Projects.ListProjects(opt, gl.WithContext(ctx))
-		if err != nil {
-			return nil, err
-		}
-		for _, p := range projs {
-			names = append(names, p.Name)
-		}
-		if resp.NextPage == 0 {
-			break
-		}
-		opt.Page = resp.NextPage
-	}
-	return names, nil
-}
-
 func (g *glForge) Sync(ctx context.Context, user string, m Meta) error {
 	pid := user + "/" + m.Name
 	proj, resp, err := g.c.Projects.GetProject(pid, nil, gl.WithContext(ctx))
 	if err != nil {
 		if resp != nil && resp.StatusCode == http.StatusNotFound {
-			if err := g.Create(ctx, user, m); err != nil {
+			if err := g.create(ctx, m); err != nil {
 				return err
 			}
 			if m.Archived {
-				return g.Archive(ctx, user, m.Name, true)
+				return g.archive(ctx, user, m.Name, true)
 			}
 			return nil
 		}
@@ -127,12 +98,12 @@ func (g *glForge) Sync(ctx context.Context, user string, m Meta) error {
 	}
 	desc := descOrEmpty(m.Desc)
 	if proj.Description != desc || proj.Visibility != *glVis(m.Vis) {
-		if err := g.Update(ctx, user, m); err != nil {
+		if err := g.update(ctx, user, m); err != nil {
 			return err
 		}
 	}
 	if proj.Archived != m.Archived {
-		return g.Archive(ctx, user, m.Name, m.Archived)
+		return g.archive(ctx, user, m.Name, m.Archived)
 	}
 	return nil
 }

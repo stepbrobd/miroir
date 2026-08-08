@@ -15,8 +15,8 @@ type cbForge struct {
 	c  *gitea.Client
 }
 
-func newCodeberg(token string) (*cbForge, error) {
-	c, err := gitea.NewClient("https://codeberg.org",
+func newCodeberg(token, domain string) (*cbForge, error) {
+	c, err := gitea.NewClient("https://"+domain,
 		gitea.SetToken(token),
 		gitea.SetGiteaVersion(""),
 	)
@@ -34,7 +34,7 @@ func (g *cbForge) withCtx(ctx context.Context) {
 	g.c.SetContext(ctx)
 }
 
-func (g *cbForge) Create(ctx context.Context, _ string, m Meta) error {
+func (g *cbForge) create(ctx context.Context, m Meta) error {
 	g.withCtx(ctx)
 	defer g.mu.Unlock()
 	desc := descOrEmpty(m.Desc)
@@ -54,7 +54,7 @@ func (g *cbForge) Create(ctx context.Context, _ string, m Meta) error {
 	return nil
 }
 
-func (g *cbForge) Update(ctx context.Context, user string, m Meta) error {
+func (g *cbForge) update(ctx context.Context, user string, m Meta) error {
 	g.withCtx(ctx)
 	defer g.mu.Unlock()
 	desc := descOrEmpty(m.Desc)
@@ -68,52 +68,13 @@ func (g *cbForge) Update(ctx context.Context, user string, m Meta) error {
 	return err
 }
 
-func (g *cbForge) Archive(ctx context.Context, user, name string, flag bool) error {
-	g.withCtx(ctx)
-	defer g.mu.Unlock()
-	_, _, err := g.c.EditRepo(user, name, gitea.EditRepoOption{
-		Archived: &flag,
-	})
-	return err
-}
-
-func (g *cbForge) Delete(ctx context.Context, user, name string) error {
-	g.withCtx(ctx)
-	defer g.mu.Unlock()
-	_, err := g.c.DeleteRepo(user, name)
-	return err
-}
-
-func (g *cbForge) List(ctx context.Context, _ string) ([]string, error) {
-	g.withCtx(ctx)
-	defer g.mu.Unlock()
-	opt := gitea.ListReposOptions{
-		ListOptions: gitea.ListOptions{PageSize: 50, Page: 1},
-	}
-	var names []string
-	for {
-		repos, _, err := g.c.ListMyRepos(opt)
-		if err != nil {
-			return nil, err
-		}
-		for _, r := range repos {
-			names = append(names, r.Name)
-		}
-		if len(repos) < opt.PageSize {
-			break
-		}
-		opt.Page++
-	}
-	return names, nil
-}
-
 func (g *cbForge) Sync(ctx context.Context, user string, m Meta) error {
 	g.withCtx(ctx)
 	repo, resp, err := g.c.GetRepo(user, m.Name)
 	g.mu.Unlock()
 	if err != nil {
 		if resp != nil && resp.StatusCode == http.StatusNotFound {
-			return g.Create(ctx, user, m)
+			return g.create(ctx, m)
 		}
 		return err
 	}
@@ -122,5 +83,5 @@ func (g *cbForge) Sync(ctx context.Context, user string, m Meta) error {
 	if repo.Description == desc && repo.Private == priv && repo.Archived == m.Archived {
 		return nil
 	}
-	return g.Update(ctx, user, m)
+	return g.update(ctx, user, m)
 }
