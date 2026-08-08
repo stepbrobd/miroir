@@ -128,15 +128,15 @@ type Platform struct {
 	Domain string  `toml:"domain"`
 	User   string  `toml:"user"`
 	Access Access  `toml:"access"`
-	Token  *string `toml:"token,omitempty"`
-	Forge  *Forge  `toml:"forge,omitempty"`
+	Token  *string `toml:"token"`
+	Forge  *Forge  `toml:"forge"`
 }
 
 type Repo struct {
-	Description *string    `toml:"description,omitempty"`
+	Description *string    `toml:"description"`
 	Visibility  Visibility `toml:"visibility"`
 	Archived    bool       `toml:"archived"`
-	Branch      *string    `toml:"branch,omitempty"`
+	Branch      *string    `toml:"branch"`
 }
 
 type Index struct {
@@ -154,7 +154,7 @@ type Config struct {
 	Index    Index               `toml:"index"`
 }
 
-func Validate(cfg *Config) error {
+func validate(cfg *Config) error {
 	if strings.TrimSpace(cfg.General.Home) == "" {
 		return fmt.Errorf("general.home must not be empty")
 	}
@@ -167,13 +167,16 @@ func Validate(cfg *Config) error {
 	if cfg.General.Concurrency.Remote < 0 {
 		return fmt.Errorf("general.concurrency.remote must be non-negative, got %d", cfg.General.Concurrency.Remote)
 	}
+	if cfg.Index.Interval <= 0 {
+		return fmt.Errorf("index.interval must be positive, got %d", cfg.Index.Interval)
+	}
 	origins := 0
 	tokenVars := make(map[string]string, len(cfg.Platform))
 	for name, platform := range cfg.Platform {
 		if platform.Origin {
 			origins++
 		}
-		if platform.Domain == "" {
+		if strings.TrimSpace(platform.Domain) == "" {
 			return fmt.Errorf("platform %q: domain is required", name)
 		}
 		tokenVar := tokenEnvVar(name)
@@ -185,6 +188,13 @@ func Validate(cfg *Config) error {
 	if origins != 1 {
 		return fmt.Errorf("expected exactly one platform with origin = true, got %d", origins)
 	}
+	// repo names become directory names and forge repo names, so they
+	// must be single flat path components
+	for name := range cfg.Repo {
+		if name == "." || name == ".." || name != filepath.Base(name) {
+			return fmt.Errorf("repo name %q must be a bare directory name", name)
+		}
+	}
 	return nil
 }
 
@@ -193,9 +203,9 @@ func ForgeOfDomain(domain string) *Forge {
 	d := strings.ToLower(domain)
 	var f Forge
 	switch {
-	case d == "github.com" || strings.HasPrefix(d, "github."):
+	case strings.HasPrefix(d, "github."):
 		f = Github
-	case d == "gitlab.com" || strings.HasPrefix(d, "gitlab."):
+	case strings.HasPrefix(d, "gitlab."):
 		f = Gitlab
 	case d == "codeberg.org":
 		f = Codeberg
@@ -268,10 +278,16 @@ func Parse(s string) (*Config, error) {
 			Bare:     true,
 		},
 	}
-	if _, err := toml.Decode(s, cfg); err != nil {
+	md, err := toml.Decode(s, cfg)
+	if err != nil {
 		return nil, fmt.Errorf("config parse: %w", err)
 	}
-	if err := Validate(cfg); err != nil {
+	// a misspelled key silently falling back to a zero value could make
+	// sync flip live repos private, so unknown keys are fatal
+	if undecoded := md.Undecoded(); len(undecoded) > 0 {
+		return nil, fmt.Errorf("config parse: unknown keys %v", undecoded)
+	}
+	if err := validate(cfg); err != nil {
 		return nil, err
 	}
 	return cfg, nil

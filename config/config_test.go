@@ -395,16 +395,62 @@ include = ["/var/lib/gitea/repos", "/opt/gitlab/repos"]
 	}
 }
 
-func TestAccessRoundTrip(t *testing.T) {
-	cfg, err := Parse(`
-[platform.test]
-origin = true
-domain = "test.com"
-access = "https"`)
-	if err != nil {
-		t.Fatal(err)
+func TestParseRejectsUnknownKeys(t *testing.T) {
+	tests := []string{
+		"[platform.a]\norigin = true\ndomain = \"a.com\"\n\n[repo.x]\nvisiblity = \"public\"\n",
+		"[platform.a]\norigin = true\ndomain = \"a.com\"\naccess_mode = \"ssh\"\n",
+		"[genral]\nhome = \"~/\"\n\n[platform.a]\norigin = true\ndomain = \"a.com\"\n",
 	}
-	if cfg.Platform["test"].Access != HTTPS {
-		t.Errorf("got %v, want HTTPS", cfg.Platform["test"].Access)
+	for _, s := range tests {
+		if _, err := Parse(s); err == nil {
+			t.Errorf("expected unknown key error for %q", s)
+		}
+	}
+}
+
+func TestValidateRejectsNonFlatRepoNames(t *testing.T) {
+	for _, name := range []string{"a/b", "a/.", "./a", "..", "."} {
+		s := "[platform.a]\norigin = true\ndomain = \"a.com\"\n\n[repo.\"" + name + "\"]\nvisibility = \"private\"\n"
+		if _, err := Parse(s); err == nil {
+			t.Errorf("expected repo name error for %q", name)
+		}
+	}
+}
+
+func TestValidateRejectsNonPositiveInterval(t *testing.T) {
+	_, err := Parse(`
+[platform.a]
+origin = true
+domain = "a.com"
+
+[index]
+interval = 0
+`)
+	if err == nil {
+		t.Fatal("expected interval validation error")
+	}
+}
+
+func TestValidateRequiresDomain(t *testing.T) {
+	_, err := Parse(`
+[platform.a]
+origin = true
+domain = "  "
+`)
+	if err == nil {
+		t.Fatal("expected domain required error")
+	}
+}
+
+func TestUnmarshalTextRejectsUnknownValues(t *testing.T) {
+	tests := []string{
+		"[platform.a]\norigin = true\ndomain = \"a.com\"\naccess = \"telnet\"\n",
+		"[platform.a]\norigin = true\ndomain = \"a.com\"\nforge = \"bitbucket\"\n",
+		"[platform.a]\norigin = true\ndomain = \"a.com\"\n\n[repo.x]\nvisibility = \"internal\"\n",
+	}
+	for _, s := range tests {
+		if _, err := Parse(s); err == nil {
+			t.Errorf("expected enum decode error for %q", s)
+		}
 	}
 }
