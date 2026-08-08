@@ -19,7 +19,6 @@ func isNonBareRepo(path string) bool {
 }
 
 // discover finds git repos one level deep under each dir in paths
-// no recursion, only direct children are examined
 func Discover(paths []string) ([]string, error) {
 	var repos []string
 	for _, base := range paths {

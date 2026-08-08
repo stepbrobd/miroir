@@ -1,6 +1,7 @@
 package index
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"strings"
@@ -20,9 +21,15 @@ func activeManagedRepoPaths(c *Cfg) map[string]string {
 func activeManagedShardNames(c *Cfg) map[string]string {
 	names := make(map[string]string, len(c.Repos))
 	for _, r := range c.Repos {
-		names[repoPath(c.Home, r.Name, c.Bare)] = r.servedName()
+		names[repoPath(c.Home, r.Name, c.Bare)] = r.IndexName
 	}
 	return names
+}
+
+// orphanTempDir reports bootstrap temp dirs left behind by a crash
+// tempRepoDir names them .<repo>.tmp-<rand>
+func orphanTempDir(entry string) bool {
+	return strings.HasPrefix(entry, ".") && strings.Contains(entry, ".tmp-")
 }
 
 func cleanupManagedRepoDirs(c *Cfg) error {
@@ -37,6 +44,14 @@ func cleanupManagedRepoDirs(c *Cfg) error {
 	active := activeManagedRepoPaths(c)
 	for _, entry := range entries {
 		if !entry.IsDir() {
+			continue
+		}
+		if orphanTempDir(entry.Name()) {
+			path := filepath.Join(c.Home, entry.Name())
+			if err := os.RemoveAll(path); err != nil {
+				return err
+			}
+			log.Info("removed orphaned temp dir", "path", path)
 			continue
 		}
 		name, path, ok := managedRepoName(c, entry.Name())
@@ -67,7 +82,9 @@ func managedRepoName(c *Cfg, entry string) (string, string, bool) {
 			return "", "", false
 		}
 	}
-	marker, ok, err := repoConfig(path, c.Env, "miroir.managed")
+	// cleanup config reads are millisecond-scale local git calls and run
+	// to completion by design, so they are not tied to the cycle context
+	marker, ok, err := repoConfig(context.Background(), path, c.Env, "miroir.managed")
 	if err != nil || !ok || marker != "true" {
 		return "", "", false
 	}

@@ -9,7 +9,6 @@ import (
 	"path"
 	"path/filepath"
 	"slices"
-	"strings"
 	"sync"
 	"time"
 
@@ -35,9 +34,10 @@ type Cfg struct {
 	Repos []Repo
 }
 
+// indexRepo is a seam swapped out by tests
 var indexRepo = IndexRepo
 
-// cfgFrom builds a daemon config with process env merged with config env
+// cfgFrom builds a daemon config from a validated miroir config
 func CfgFrom(c *config.Config) (*Cfg, error) {
 	home, err := workspace.ExpandHome(c.General.Home)
 	if err != nil {
@@ -47,15 +47,25 @@ func CfgFrom(c *config.Config) (*Cfg, error) {
 	if err != nil {
 		return nil, fmt.Errorf("expand database path: %w", err)
 	}
-
-	if c.Index.Interval <= 0 {
-		return nil, fmt.Errorf("index.interval must be positive, got %d", c.Index.Interval)
+	include := make([]string, 0, len(c.Index.Include))
+	for _, inc := range c.Index.Include {
+		p, err := workspace.ExpandHome(inc)
+		if err != nil {
+			return nil, fmt.Errorf("expand include path: %w", err)
+		}
+		include = append(include, p)
 	}
-	env := mergeEnv(c.General.Env)
+
+	// config validation guarantees exactly one origin platform
+	var origin config.Platform
+	for _, p := range c.Platform {
+		if p.Origin {
+			origin = p
+			break
+		}
+	}
 
 	var repos []Repo
-	// deterministic iteration
-	pnames := slices.Sorted(maps.Keys(c.Platform))
 	for _, name := range slices.Sorted(maps.Keys(c.Repo)) {
 		repo := c.Repo[name]
 		if repo.Archived {
@@ -65,23 +75,15 @@ func CfgFrom(c *config.Config) (*Cfg, error) {
 		if repo.Branch != nil {
 			branch = *repo.Branch
 		}
-		for _, pn := range pnames {
-			p := c.Platform[pn]
-			if !p.Origin {
-				continue
-			}
-			uri := workspace.MakeURI(p.Access, p.Domain, p.User, name)
-			webURL, webURLType := repoWebMetadata(p, name)
-			repos = append(repos, Repo{
-				Name:       name,
-				IndexName:  repoIndexName(p, name),
-				URI:        uri,
-				Branch:     branch,
-				WebURL:     webURL,
-				WebURLType: webURLType,
-			})
-			break
-		}
+		webURL, webURLType := repoWebMetadata(origin, name)
+		repos = append(repos, Repo{
+			Name:       name,
+			IndexName:  repoIndexName(origin, name),
+			URI:        workspace.MakeURI(origin.Access, origin.Domain, origin.User, name),
+			Branch:     branch,
+			WebURL:     webURL,
+			WebURLType: webURLType,
+		})
 	}
 
 	return &Cfg{
@@ -89,8 +91,8 @@ func CfgFrom(c *config.Config) (*Cfg, error) {
 		Database: filepath.Clean(db),
 		Interval: time.Duration(c.Index.Interval) * time.Second,
 		Bare:     c.Index.Bare,
-		Include:  c.Index.Include,
-		Env:      env,
+		Include:  include,
+		Env:      CmdEnv(workspace.MergeEnv(c.General.Env)),
 		Home:     filepath.Clean(home),
 		Repos:    repos,
 	}, nil
@@ -121,28 +123,6 @@ func repoWebMetadata(p config.Platform, repo string) (string, string) {
 
 func repoIndexName(p config.Platform, repo string) string {
 	return path.Join(p.Domain, p.User, repo)
-}
-
-func mergeEnv(extra map[string]string) CmdEnv {
-	base := os.Environ()
-	if len(extra) == 0 {
-		return CmdEnv(base)
-	}
-	seen := make(map[string]struct{}, len(base))
-	merged := make([]string, 0, len(base)+len(extra))
-	for _, item := range base {
-		merged = append(merged, item)
-		if before, _, ok := strings.Cut(item, "="); ok {
-			seen[before] = struct{}{}
-		}
-	}
-	for _, key := range slices.Sorted(maps.Keys(extra)) {
-		if _, ok := seen[key]; ok {
-			continue
-		}
-		merged = append(merged, key+"="+extra[key])
-	}
-	return CmdEnv(merged)
 }
 
 // run starts the daemon and blocks until ctx is cancelled
@@ -189,6 +169,10 @@ func Run(ctx context.Context, c *Cfg) error {
 		}
 	}()
 
+	// cycles get their own cancel so a server failure can abort them
+	cycleCtx, cancelCycles := context.WithCancel(ctx)
+	defer cancelCycles()
+
 	var cycleWg sync.WaitGroup
 	var cycleMu sync.Mutex
 	startCycle := func() {
@@ -198,7 +182,7 @@ func Run(ctx context.Context, c *Cfg) error {
 				return
 			}
 			defer cycleMu.Unlock()
-			cycleContext(ctx, c)
+			cycle(cycleCtx, c)
 		})
 	}
 
@@ -221,7 +205,8 @@ func Run(ctx context.Context, c *Cfg) error {
 			}
 			return ctx.Err()
 		case err := <-errCh:
-			// still shut down the server to release resources
+			// abort the running cycle and release server resources
+			cancelCycles()
 			httpSrv.Close()
 			cycleWg.Wait()
 			return err
@@ -232,11 +217,7 @@ func Run(ctx context.Context, c *Cfg) error {
 }
 
 // cycle runs one fetch+index pass
-func cycle(c *Cfg) {
-	cycleContext(context.Background(), c)
-}
-
-func cycleContext(ctx context.Context, c *Cfg) {
+func cycle(ctx context.Context, c *Cfg) {
 	log.Info("cycle start")
 	start := time.Now()
 	var n int
@@ -255,7 +236,7 @@ func cycleContext(ctx context.Context, c *Cfg) {
 		if err := ctx.Err(); err != nil {
 			return
 		}
-		p, err := FetchContext(ctx, c.Home, r, c.Bare, c.Env)
+		p, err := Fetch(ctx, c.Home, r, c.Bare, c.Env)
 		if err != nil {
 			if ctx.Err() != nil {
 				return
@@ -263,7 +244,7 @@ func cycleContext(ctx context.Context, c *Cfg) {
 			log.Error("fetch failed", "repo", r.Name, "err", err)
 			continue
 		}
-		if err := indexRepo(p, c.Database, r.servedName(), nil); err != nil {
+		if err := indexRepo(p, c.Database, r.IndexName); err != nil {
 			if ctx.Err() != nil {
 				return
 			}
@@ -273,7 +254,7 @@ func cycleContext(ctx context.Context, c *Cfg) {
 		if err := ctx.Err(); err != nil {
 			return
 		}
-		if err := cleanupManagedShardsForRepo(c.Database, p, r.servedName()); err != nil {
+		if err := cleanupManagedShardsForRepo(c.Database, p, r.IndexName); err != nil {
 			log.Error("cleanup managed shards failed", "repo", r.Name, "err", err)
 		}
 		n++
@@ -294,7 +275,7 @@ func cycleContext(ctx context.Context, c *Cfg) {
 				if err := ctx.Err(); err != nil {
 					return
 				}
-				if err := indexRepo(p, c.Database, "", nil); err != nil {
+				if err := indexRepo(p, c.Database, ""); err != nil {
 					if ctx.Err() != nil {
 						return
 					}

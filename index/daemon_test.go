@@ -3,7 +3,6 @@ package index
 import (
 	"context"
 	"errors"
-	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -137,7 +136,7 @@ func shardRepoByName(t *testing.T, dir, name string) *zoekt.Repository {
 
 func bareHeadRef(t *testing.T, dir string, env []string) string {
 	t.Helper()
-	out, err := gitOutput(dir, CmdEnv(env), "symbolic-ref", "HEAD")
+	out, err := gitOutput(t.Context(), dir, CmdEnv(env), "symbolic-ref", "HEAD")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -146,7 +145,7 @@ func bareHeadRef(t *testing.T, dir string, env []string) string {
 
 func branchNames(t *testing.T, dir string, env []string, prefix string, strip int) []string {
 	t.Helper()
-	names, err := listRefs(dir, CmdEnv(env), prefix, strip)
+	names, err := listRefs(t.Context(), dir, CmdEnv(env), prefix, strip)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -173,10 +172,10 @@ func TestCycleIntegration(t *testing.T) {
 		Interval: time.Hour,
 		Bare:     true,
 		Home:     home,
-		Repos:    []Repo{{Name: "seed", URI: src, Branch: "main"}},
+		Repos:    []Repo{{Name: "seed", IndexName: "seed", URI: src, Branch: "main"}},
 	}
 
-	cycle(c)
+	cycle(t.Context(), c)
 
 	// verify shards were created
 	entries, err := os.ReadDir(db)
@@ -218,10 +217,10 @@ func TestCycleContextCanceledBeforeWork(t *testing.T) {
 		Interval: time.Hour,
 		Bare:     true,
 		Home:     home,
-		Repos:    []Repo{{Name: "seed", URI: src, Branch: "main"}},
+		Repos:    []Repo{{Name: "seed", IndexName: "seed", URI: src, Branch: "main"}},
 	}
 
-	cycleContext(ctx, c)
+	cycle(ctx, c)
 	if _, err := os.Stat(filepath.Join(home, "seed.git")); !os.IsNotExist(err) {
 		t.Fatalf("expected canceled cycle to skip repo setup got %v", err)
 	}
@@ -237,34 +236,8 @@ func TestCycleContextCanceledDuringFetchStopsLaterRepos(t *testing.T) {
 	first := seedRepoWithFile(t, tmp, "first.go", "package first\n")
 	second := seedRepoWithFile(t, filepath.Join(tmp, "second-src"), "second.go", "package second\n")
 
-	realGit, err := exec.LookPath("git")
-	if err != nil {
-		t.Fatal(err)
-	}
-	binDir := filepath.Join(tmp, "bin")
-	if err := os.MkdirAll(binDir, 0o755); err != nil {
-		t.Fatal(err)
-	}
 	mark := filepath.Join(tmp, "fetch-started")
-	wrapper := filepath.Join(binDir, "git")
-	script := fmt.Sprintf(`#!/bin/sh
-case "$(basename "$PWD")" in
-  .first.git.tmp-*)
-    if [ "$1" = "fetch" ]; then
-  : > "$MIROIR_FETCH_MARK"
-  trap 'exit 0' TERM INT
-  while :; do sleep 1; done
-    fi
-    ;;
-esac
-exec "%s" "$@"
-`, realGit)
-	if err := os.WriteFile(wrapper, []byte(script), 0o755); err != nil {
-		t.Fatal(err)
-	}
-
-	t.Setenv("MIROIR_FETCH_MARK", mark)
-	t.Setenv("PATH", binDir+":"+os.Getenv("PATH"))
+	installBlockingGitWrapper(t, tmp, ".first.git.tmp-*", "fetch", mark)
 
 	home := filepath.Join(tmp, "repos")
 	db := filepath.Join(tmp, "shards")
@@ -286,14 +259,14 @@ exec "%s" "$@"
 		Home:     home,
 		Env:      CmdEnv(gitEnv()),
 		Repos: []Repo{
-			{Name: "first", URI: first, Branch: "main"},
-			{Name: "second", URI: second, Branch: "main"},
+			{Name: "first", IndexName: "first", URI: first, Branch: "main"},
+			{Name: "second", IndexName: "second", URI: second, Branch: "main"},
 		},
 	}
 
 	done := make(chan struct{})
 	go func() {
-		cycleContext(ctx, c)
+		cycle(ctx, c)
 		close(done)
 	}()
 
@@ -337,7 +310,7 @@ func TestRunCancelWaitsForActiveIndex(t *testing.T) {
 	release := make(chan struct{})
 	finished := make(chan struct{})
 	oldIndexRepo := indexRepo
-	indexRepo = func(repoDir, indexDir, name string, branches []string) error {
+	indexRepo = func(repoDir, indexDir, name string) error {
 		close(started)
 		<-release
 		close(finished)
@@ -424,7 +397,7 @@ func TestCycleWithInclude(t *testing.T) {
 		Include:  []string{incDir},
 	}
 
-	cycle(c)
+	cycle(t.Context(), c)
 
 	entries, err := os.ReadDir(db)
 	if err != nil {
@@ -475,7 +448,7 @@ func TestCycleCleansUpRemovedIncludeShards(t *testing.T) {
 		Include:  []string{incDir},
 	}
 
-	cycle(c)
+	cycle(t.Context(), c)
 	if matches := searchMatches(t, db, "package lib"); len(matches) == 0 {
 		t.Fatal("expected indexed include content before cleanup")
 	}
@@ -483,12 +456,90 @@ func TestCycleCleansUpRemovedIncludeShards(t *testing.T) {
 	if err := os.RemoveAll(repoDir); err != nil {
 		t.Fatal(err)
 	}
-	cycle(c)
+	cycle(t.Context(), c)
 	if matches := searchMatches(t, db, "package lib"); len(matches) != 0 {
 		t.Fatalf("expected no include matches after cleanup got %v", matches)
 	}
 	if got := shardRepoNames(t, db); len(got) != 0 {
 		t.Fatalf("expected no include shards after cleanup got %v", got)
+	}
+}
+
+func TestCycleKeepsIncludeShardsWhenDiscoveryFails(t *testing.T) {
+	skipNoGit(t)
+	tmp := t.TempDir()
+
+	incDir := filepath.Join(tmp, "include")
+	repoDir := filepath.Join(incDir, "myrepo")
+	if err := os.MkdirAll(repoDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	env := gitEnv()
+	gitRun(t, repoDir, env, "init", "--initial-branch=main")
+	if err := os.WriteFile(filepath.Join(repoDir, "lib.go"), []byte("package lib\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	gitRun(t, repoDir, env, "add", ".")
+	gitRun(t, repoDir, env, "commit", "-m", "init")
+
+	db := filepath.Join(tmp, "shards")
+	if err := os.MkdirAll(db, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	c := &Cfg{
+		Listen:   ":0",
+		Database: db,
+		Interval: time.Hour,
+		Bare:     true,
+		Home:     filepath.Join(tmp, "managed"),
+		Include:  []string{incDir},
+	}
+
+	cycle(t.Context(), c)
+	if matches := searchMatches(t, db, "package lib"); len(matches) == 0 {
+		t.Fatal("expected indexed include content")
+	}
+
+	// removing the include root makes discovery fail, shards must survive
+	if err := os.RemoveAll(incDir); err != nil {
+		t.Fatal(err)
+	}
+	cycle(t.Context(), c)
+	if matches := searchMatches(t, db, "package lib"); len(matches) == 0 {
+		t.Fatal("expected include shards to survive discovery failure")
+	}
+}
+
+func TestCycleRemovesOrphanedTempDirs(t *testing.T) {
+	skipNoGit(t)
+	tmp := t.TempDir()
+	home := filepath.Join(tmp, "repos")
+	db := filepath.Join(tmp, "shards")
+	if err := os.MkdirAll(home, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(db, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	orphan := filepath.Join(home, ".seed.git.tmp-abc123")
+	if err := os.MkdirAll(orphan, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	c := &Cfg{
+		Listen:   ":0",
+		Database: db,
+		Interval: time.Hour,
+		Bare:     true,
+		Home:     home,
+	}
+
+	cycle(t.Context(), c)
+	if _, err := os.Stat(orphan); !os.IsNotExist(err) {
+		t.Fatalf("expected orphaned temp dir removed got %v", err)
 	}
 }
 
@@ -521,10 +572,10 @@ func TestCycleBareReconcilesHeadsAndIndexesConfiguredBranch(t *testing.T) {
 		Interval: time.Hour,
 		Bare:     true,
 		Home:     home,
-		Repos:    []Repo{{Name: "seed", URI: src, Branch: "feature"}},
+		Repos:    []Repo{{Name: "seed", IndexName: "seed", URI: src, Branch: "feature"}},
 	}
 
-	cycle(c)
+	cycle(t.Context(), c)
 	if matches := searchMatches(t, db, "feature branch needle"); len(matches) == 0 {
 		t.Fatal("expected feature branch content from configured bare head")
 	}
@@ -570,19 +621,19 @@ func TestCycleBarePrunesDeletedOriginBranchesAndUnexpectedLocalHeads(t *testing.
 		Interval: time.Hour,
 		Bare:     true,
 		Home:     home,
-		Repos:    []Repo{{Name: "seed", URI: src, Branch: "main"}},
+		Repos:    []Repo{{Name: "seed", IndexName: "seed", URI: src, Branch: "main"}},
 	}
 
-	cycle(c)
+	cycle(t.Context(), c)
 	barePath := filepath.Join(home, "seed.git")
-	hash, err := resolveRef(barePath, CmdEnv(env), "refs/heads/main")
+	hash, err := resolveRef(t.Context(), barePath, CmdEnv(env), "refs/heads/main")
 	if err != nil {
 		t.Fatal(err)
 	}
 	gitRun(t, barePath, env, "update-ref", "refs/heads/junk", hash)
 	gitRun(t, src, env, "branch", "-D", "feature")
 
-	cycle(c)
+	cycle(t.Context(), c)
 	if got := branchNames(t, barePath, env, "refs/heads", 2); !slices.Equal(got, []string{"main"}) {
 		t.Fatalf("got local branches %v want [main]", got)
 	}
@@ -617,10 +668,10 @@ func TestCycleNonBareClonesConfiguredBranchThenFollowsHead(t *testing.T) {
 		Interval: time.Hour,
 		Bare:     false,
 		Home:     home,
-		Repos:    []Repo{{Name: "seed", URI: src, Branch: "feature"}},
+		Repos:    []Repo{{Name: "seed", IndexName: "seed", URI: src, Branch: "feature"}},
 	}
 
-	cycle(c)
+	cycle(t.Context(), c)
 	if matches := searchMatches(t, db, "feature branch needle"); len(matches) == 0 {
 		t.Fatal("expected feature branch content from initial configured clone")
 	}
@@ -628,7 +679,7 @@ func TestCycleNonBareClonesConfiguredBranchThenFollowsHead(t *testing.T) {
 	clone := filepath.Join(home, "seed")
 	gitRun(t, clone, env, "checkout", "-b", "main", "origin/main")
 
-	cycle(c)
+	cycle(t.Context(), c)
 	if matches := searchMatches(t, db, "feature branch needle"); len(matches) != 0 {
 		t.Fatalf("got stale feature matches after switching local HEAD: %v", matches)
 	}
@@ -654,10 +705,10 @@ func TestCycleCleansUpRemovedManagedRepoAndShards(t *testing.T) {
 		Interval: time.Hour,
 		Bare:     true,
 		Home:     home,
-		Repos:    []Repo{{Name: "seed", URI: src, Branch: "main"}},
+		Repos:    []Repo{{Name: "seed", IndexName: "seed", URI: src, Branch: "main"}},
 	}
 
-	cycle(c)
+	cycle(t.Context(), c)
 	if _, err := os.Stat(filepath.Join(home, "seed.git")); err != nil {
 		t.Fatal(err)
 	}
@@ -666,7 +717,7 @@ func TestCycleCleansUpRemovedManagedRepoAndShards(t *testing.T) {
 	}
 
 	c.Repos = nil
-	cycle(c)
+	cycle(t.Context(), c)
 	if _, err := os.Stat(filepath.Join(home, "seed.git")); !os.IsNotExist(err) {
 		t.Fatalf("expected managed repo dir removed got %v", err)
 	}
@@ -703,7 +754,7 @@ func TestCycleCleanupKeepsUnmanagedRepoDirs(t *testing.T) {
 		Home:     home,
 	}
 
-	cycle(c)
+	cycle(t.Context(), c)
 	if _, err := os.Stat(unmanaged); err != nil {
 		t.Fatalf("expected unmanaged repo to remain got %v", err)
 	}
@@ -729,13 +780,13 @@ func TestCycleRemovesLegacyManagedShardNames(t *testing.T) {
 		Interval: time.Hour,
 		Bare:     true,
 		Home:     home,
-		Repos:    []Repo{{Name: "seed", URI: src, Branch: "main"}},
+		Repos:    []Repo{{Name: "seed", IndexName: "seed", URI: src, Branch: "main"}},
 	}
 
-	cycle(c)
+	cycle(t.Context(), c)
 	barePath := filepath.Join(home, "seed.git")
 	gitRun(t, barePath, gitEnv(), "config", "zoekt.name", "seed.git")
-	if err := IndexRepo(barePath, db, "seed.git", nil); err != nil {
+	if err := IndexRepo(barePath, db, "seed.git"); err != nil {
 		t.Fatal(err)
 	}
 	gitRun(t, barePath, gitEnv(), "config", "zoekt.name", "seed")
@@ -743,7 +794,7 @@ func TestCycleRemovesLegacyManagedShardNames(t *testing.T) {
 		t.Fatalf("expected legacy shard alongside managed shard got %v", got)
 	}
 
-	cycle(c)
+	cycle(t.Context(), c)
 	if got := shardRepoNames(t, db); !slices.Equal(got, []string{"seed"}) {
 		t.Fatalf("expected legacy shard removed got %v", got)
 	}
@@ -769,13 +820,13 @@ func TestCleanupManagedShardsForRepoRemovesLegacyNames(t *testing.T) {
 		Interval: time.Hour,
 		Bare:     true,
 		Home:     home,
-		Repos:    []Repo{{Name: "seed", URI: src, Branch: "main"}},
+		Repos:    []Repo{{Name: "seed", IndexName: "seed", URI: src, Branch: "main"}},
 	}
 
-	cycle(c)
+	cycle(t.Context(), c)
 	repoPath := filepath.Join(home, "seed.git")
 	gitRun(t, repoPath, gitEnv(), "config", "zoekt.name", "seed.git")
-	if err := IndexRepo(repoPath, db, "seed.git", nil); err != nil {
+	if err := IndexRepo(repoPath, db, "seed.git"); err != nil {
 		t.Fatal(err)
 	}
 	if got := shardRepoNames(t, db); !slices.Equal(got, []string{"seed", "seed.git"}) {
@@ -820,7 +871,7 @@ func TestCycleManagedRepoUsesFullNameAndGithubLinks(t *testing.T) {
 		}},
 	}
 
-	cycle(c)
+	cycle(t.Context(), c)
 
 	repo := shardRepoByName(t, db, "github.com/alice/seed")
 	if repo.Name != "github.com/alice/seed" {
@@ -834,27 +885,6 @@ func TestCycleManagedRepoUsesFullNameAndGithubLinks(t *testing.T) {
 	}
 	if !strings.Contains(repo.FileURLTemplate, "https://github.com/alice/seed") {
 		t.Fatalf("file template: got %q", repo.FileURLTemplate)
-	}
-}
-
-func TestCfgFromValidation(t *testing.T) {
-	t.Setenv("HOME", "/tmp/test")
-
-	// interval = 0 should fail
-	c := &config.Config{
-		General: config.General{Home: "/tmp", Branch: "main"},
-		Index:   config.Index{Listen: ":0", Database: "/tmp/db", Interval: 0, Bare: true},
-	}
-	_, err := CfgFrom(c)
-	if err == nil {
-		t.Error("expected error for interval=0")
-	}
-
-	// negative interval should fail
-	c.Index.Interval = -1
-	_, err = CfgFrom(c)
-	if err == nil {
-		t.Error("expected error for negative interval")
 	}
 }
 

@@ -9,12 +9,9 @@ import (
 	zoektindex "github.com/sourcegraph/zoekt/index"
 )
 
-// indexRepo indexes a single git repo into the given shard directory
-// branches defaults to ["HEAD"] if empty
-func IndexRepo(repoDir, indexDir, name string, branches []string) error {
-	if len(branches) == 0 {
-		branches = []string{"HEAD"}
-	}
+// IndexRepo indexes one git repo's HEAD into the given shard directory
+// name defaults to the repo directory base name
+func IndexRepo(repoDir, indexDir, name string) error {
 	if name == "" {
 		name = filepath.Base(repoDir)
 	}
@@ -23,7 +20,7 @@ func IndexRepo(repoDir, indexDir, name string, branches []string) error {
 	opts := gitindex.Options{
 		RepoDir:     repoDir,
 		Incremental: true,
-		Branches:    branches,
+		Branches:    []string{"HEAD"},
 		BuildOptions: zoektindex.Options{
 			IndexDir: indexDir,
 			RepositoryDescription: zoekt.Repository{

@@ -15,6 +15,7 @@ import (
 )
 
 // repo describes a managed repo to keep updated
+// indexName is the served zoekt repository name and must be set
 type Repo struct {
 	Name       string
 	IndexName  string
@@ -28,19 +29,14 @@ type CmdEnv []string
 
 const bareOriginFetchRefspec = "+refs/heads/*:refs/remotes/origin/*"
 
-// fetch clones or fetches a managed repo
-// dir is the parent directory, bare controls clone mode
+// fetch clones or fetches a managed repo under the parent directory dir
 // returns the full path to the repo on disk
-func Fetch(dir string, r Repo, bare bool, env CmdEnv) (string, error) {
-	return FetchContext(context.Background(), dir, r, bare, env)
-}
-
-func FetchContext(ctx context.Context, dir string, r Repo, bare bool, env CmdEnv) (string, error) {
+func Fetch(ctx context.Context, dir string, r Repo, bare bool, env CmdEnv) (string, error) {
 	path := repoPath(dir, r.Name, bare)
 	if bare {
-		return path, syncBareRepoContext(ctx, path, r, env)
+		return path, syncBareRepo(ctx, path, r, env)
 	}
-	return path, syncWorktreeRepoContext(ctx, path, r, env)
+	return path, syncWorktreeRepo(ctx, path, r, env)
 }
 
 func repoPath(dir, name string, bare bool) string {
@@ -50,83 +46,70 @@ func repoPath(dir, name string, bare bool) string {
 	return filepath.Join(dir, name)
 }
 
-func (r Repo) servedName() string {
-	if r.IndexName != "" {
-		return r.IndexName
-	}
-	return r.Name
-}
-
-func syncBareRepoContext(ctx context.Context, path string, r Repo, env CmdEnv) error {
+func syncBareRepo(ctx context.Context, path string, r Repo, env CmdEnv) error {
 	info, err := os.Stat(path)
 	if os.IsNotExist(err) {
-		if err := bootstrapBareRepoContext(ctx, path, r, env); err != nil {
-			return err
-		}
-		return nil
+		return bootstrapBareRepo(ctx, path, r, env)
 	} else if err != nil {
 		return fmt.Errorf("stat %s: %w", path, err)
 	} else if !info.IsDir() {
 		return fmt.Errorf("%s is not a directory", path)
 	}
 
-	if err := ensureBareRepoContext(ctx, path, env); err != nil {
+	if err := ensureBareRepo(ctx, path, env); err != nil {
 		return err
 	}
-	if err := ensureRemoteContext(ctx, path, env, "origin", r.URI); err != nil {
+	if err := ensureRemote(ctx, path, env, "origin", r.URI); err != nil {
 		return err
 	}
-	if err := setZoektNameContext(ctx, path, env, r.servedName()); err != nil {
+	if err := setZoektName(ctx, path, env, r.IndexName); err != nil {
 		return err
 	}
-	if err := setWebMetadataContext(ctx, path, env, r.WebURL, r.WebURLType); err != nil {
+	if err := setWebMetadata(ctx, path, env, r.WebURL, r.WebURLType); err != nil {
 		return err
 	}
-	if err := setManagedMarkerContext(ctx, path, env); err != nil {
+	if err := setManagedMarker(ctx, path, env); err != nil {
 		return err
 	}
-	if err := setFetchRefspecContext(ctx, path, env, bareOriginFetchRefspec); err != nil {
+	if err := setFetchRefspec(ctx, path, env, bareOriginFetchRefspec); err != nil {
 		return err
 	}
-	if err := gitContext(ctx, path, env, "fetch", "--prune", "origin"); err != nil {
+	if err := git(ctx, path, env, "fetch", "--prune", "origin"); err != nil {
 		return err
 	}
-	return syncBareHeadsContext(ctx, path, r.Branch, env)
+	return syncBareHeads(ctx, path, r.Branch, env)
 }
 
-func syncWorktreeRepoContext(ctx context.Context, path string, r Repo, env CmdEnv) error {
+func syncWorktreeRepo(ctx context.Context, path string, r Repo, env CmdEnv) error {
 	info, err := os.Stat(path)
 	if os.IsNotExist(err) {
-		if err := bootstrapWorktreeRepoContext(ctx, path, r, env); err != nil {
-			return err
-		}
-		return nil
+		return bootstrapWorktreeRepo(ctx, path, r, env)
 	} else if err != nil {
 		return fmt.Errorf("stat %s: %w", path, err)
 	} else if !info.IsDir() {
 		return fmt.Errorf("%s is not a directory", path)
 	}
 
-	if err := ensureWorktreeRepoContext(ctx, path, env); err != nil {
+	if err := ensureWorktreeRepo(ctx, path, env); err != nil {
 		return err
 	}
-	if err := ensureRemoteContext(ctx, path, env, "origin", r.URI); err != nil {
+	if err := ensureRemote(ctx, path, env, "origin", r.URI); err != nil {
 		return err
 	}
-	if err := setZoektNameContext(ctx, path, env, r.servedName()); err != nil {
+	if err := setZoektName(ctx, path, env, r.IndexName); err != nil {
 		return err
 	}
-	if err := setWebMetadataContext(ctx, path, env, r.WebURL, r.WebURLType); err != nil {
+	if err := setWebMetadata(ctx, path, env, r.WebURL, r.WebURLType); err != nil {
 		return err
 	}
-	if err := setManagedMarkerContext(ctx, path, env); err != nil {
+	if err := setManagedMarker(ctx, path, env); err != nil {
 		return err
 	}
 	log.Info("fetching", "repo", filepath.Base(path))
-	return gitContext(ctx, path, env, "fetch", "--prune", "origin")
+	return git(ctx, path, env, "fetch", "--prune", "origin")
 }
 
-func bootstrapBareRepoContext(ctx context.Context, path string, r Repo, env CmdEnv) (err error) {
+func bootstrapBareRepo(ctx context.Context, path string, r Repo, env CmdEnv) (err error) {
 	tmp, err := tempRepoDir(path)
 	if err != nil {
 		return err
@@ -138,34 +121,34 @@ func bootstrapBareRepoContext(ctx context.Context, path string, r Repo, env CmdE
 		_ = os.RemoveAll(tmp)
 	}()
 
-	if err := initManagedBareRepoContext(ctx, tmp, env); err != nil {
+	if err := initManagedBareRepo(ctx, tmp, env); err != nil {
 		return err
 	}
-	if err := ensureRemoteContext(ctx, tmp, env, "origin", r.URI); err != nil {
+	if err := ensureRemote(ctx, tmp, env, "origin", r.URI); err != nil {
 		return err
 	}
-	if err := setZoektNameContext(ctx, tmp, env, r.servedName()); err != nil {
+	if err := setZoektName(ctx, tmp, env, r.IndexName); err != nil {
 		return err
 	}
-	if err := setWebMetadataContext(ctx, tmp, env, r.WebURL, r.WebURLType); err != nil {
+	if err := setWebMetadata(ctx, tmp, env, r.WebURL, r.WebURLType); err != nil {
 		return err
 	}
-	if err := setManagedMarkerContext(ctx, tmp, env); err != nil {
+	if err := setManagedMarker(ctx, tmp, env); err != nil {
 		return err
 	}
-	if err := setFetchRefspecContext(ctx, tmp, env, bareOriginFetchRefspec); err != nil {
+	if err := setFetchRefspec(ctx, tmp, env, bareOriginFetchRefspec); err != nil {
 		return err
 	}
-	if err := gitContext(ctx, tmp, env, "fetch", "--prune", "origin"); err != nil {
+	if err := git(ctx, tmp, env, "fetch", "--prune", "origin"); err != nil {
 		return err
 	}
-	if err := syncBareHeadsContext(ctx, tmp, r.Branch, env); err != nil {
+	if err := syncBareHeads(ctx, tmp, r.Branch, env); err != nil {
 		return err
 	}
 	return os.Rename(tmp, path)
 }
 
-func bootstrapWorktreeRepoContext(ctx context.Context, path string, r Repo, env CmdEnv) (err error) {
+func bootstrapWorktreeRepo(ctx context.Context, path string, r Repo, env CmdEnv) (err error) {
 	tmp, err := tempRepoDir(path)
 	if err != nil {
 		return err
@@ -177,22 +160,22 @@ func bootstrapWorktreeRepoContext(ctx context.Context, path string, r Repo, env 
 		_ = os.RemoveAll(tmp)
 	}()
 
-	if err := cloneWorktreeRepoContext(ctx, tmp, r, env); err != nil {
+	if err := cloneWorktreeRepo(ctx, tmp, r, env); err != nil {
 		return err
 	}
-	if err := ensureWorktreeRepoContext(ctx, tmp, env); err != nil {
+	if err := ensureWorktreeRepo(ctx, tmp, env); err != nil {
 		return err
 	}
-	if err := ensureRemoteContext(ctx, tmp, env, "origin", r.URI); err != nil {
+	if err := ensureRemote(ctx, tmp, env, "origin", r.URI); err != nil {
 		return err
 	}
-	if err := setZoektNameContext(ctx, tmp, env, r.servedName()); err != nil {
+	if err := setZoektName(ctx, tmp, env, r.IndexName); err != nil {
 		return err
 	}
-	if err := setWebMetadataContext(ctx, tmp, env, r.WebURL, r.WebURLType); err != nil {
+	if err := setWebMetadata(ctx, tmp, env, r.WebURL, r.WebURLType); err != nil {
 		return err
 	}
-	if err := setManagedMarkerContext(ctx, tmp, env); err != nil {
+	if err := setManagedMarker(ctx, tmp, env); err != nil {
 		return err
 	}
 	return os.Rename(tmp, path)
@@ -205,24 +188,18 @@ func tempRepoDir(path string) (string, error) {
 	return os.MkdirTemp(filepath.Dir(path), "."+filepath.Base(path)+".tmp-")
 }
 
-func initManagedBareRepoContext(ctx context.Context, path string, env CmdEnv) error {
+func initManagedBareRepo(ctx context.Context, path string, env CmdEnv) error {
 	log.Info("initializing", "repo", filepath.Base(path), "bare", true)
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return err
-	}
-	return gitContext(ctx, path, env, "init", "--bare", path)
+	return git(ctx, path, env, "init", "--bare", path)
 }
 
-func cloneWorktreeRepoContext(ctx context.Context, path string, r Repo, env CmdEnv) error {
+func cloneWorktreeRepo(ctx context.Context, path string, r Repo, env CmdEnv) error {
 	log.Info("cloning", "repo", r.Name, "bare", false)
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return err
-	}
-	return gitContext(ctx, path, env, "clone", "--branch", r.Branch, r.URI, path)
+	return git(ctx, path, env, "clone", "--branch", r.Branch, r.URI, path)
 }
 
-func ensureBareRepoContext(ctx context.Context, path string, env CmdEnv) error {
-	out, err := gitOutputContext(ctx, path, env, "rev-parse", "--is-bare-repository")
+func ensureBareRepo(ctx context.Context, path string, env CmdEnv) error {
+	out, err := gitOutput(ctx, path, env, "rev-parse", "--is-bare-repository")
 	if err != nil {
 		return err
 	}
@@ -232,8 +209,8 @@ func ensureBareRepoContext(ctx context.Context, path string, env CmdEnv) error {
 	return nil
 }
 
-func ensureWorktreeRepoContext(ctx context.Context, path string, env CmdEnv) error {
-	out, err := gitOutputContext(ctx, path, env, "rev-parse", "--is-bare-repository")
+func ensureWorktreeRepo(ctx context.Context, path string, env CmdEnv) error {
+	out, err := gitOutput(ctx, path, env, "rev-parse", "--is-bare-repository")
 	if err != nil {
 		return err
 	}
@@ -243,73 +220,69 @@ func ensureWorktreeRepoContext(ctx context.Context, path string, env CmdEnv) err
 	return nil
 }
 
-func ensureRemoteContext(ctx context.Context, path string, env CmdEnv, name, uri string) error {
-	current, ok, err := remoteURLContext(ctx, path, env, name)
+func ensureRemote(ctx context.Context, path string, env CmdEnv, name, uri string) error {
+	current, ok, err := remoteURL(ctx, path, env, name)
 	if err != nil {
 		return err
 	}
 	if !ok {
-		return gitContext(ctx, path, env, "remote", "add", name, uri)
+		return git(ctx, path, env, "remote", "add", name, uri)
 	}
 	if current == uri {
 		return nil
 	}
-	return gitContext(ctx, path, env, "remote", "set-url", name, uri)
+	return git(ctx, path, env, "remote", "set-url", name, uri)
 }
 
-func setZoektNameContext(ctx context.Context, path string, env CmdEnv, name string) error {
-	return setRepoConfigContext(ctx, path, env, "zoekt.name", name)
+func setZoektName(ctx context.Context, path string, env CmdEnv, name string) error {
+	return setRepoConfig(ctx, path, env, "zoekt.name", name)
 }
 
-func setWebMetadataContext(ctx context.Context, path string, env CmdEnv, webURL, webURLType string) error {
+func setWebMetadata(ctx context.Context, path string, env CmdEnv, webURL, webURLType string) error {
 	if webURL == "" || webURLType == "" {
-		if err := unsetRepoConfigContext(ctx, path, env, "zoekt.web-url"); err != nil {
+		if err := unsetRepoConfig(ctx, path, env, "zoekt.web-url"); err != nil {
 			return err
 		}
-		return unsetRepoConfigContext(ctx, path, env, "zoekt.web-url-type")
+		return unsetRepoConfig(ctx, path, env, "zoekt.web-url-type")
 	}
-	if err := setRepoConfigContext(ctx, path, env, "zoekt.web-url", webURL); err != nil {
+	if err := setRepoConfig(ctx, path, env, "zoekt.web-url", webURL); err != nil {
 		return err
 	}
-	return setRepoConfigContext(ctx, path, env, "zoekt.web-url-type", webURLType)
+	return setRepoConfig(ctx, path, env, "zoekt.web-url-type", webURLType)
 }
 
-func setManagedMarkerContext(ctx context.Context, path string, env CmdEnv) error {
-	return setRepoConfigContext(ctx, path, env, "miroir.managed", "true")
+func setManagedMarker(ctx context.Context, path string, env CmdEnv) error {
+	return setRepoConfig(ctx, path, env, "miroir.managed", "true")
 }
 
-func setRepoConfigContext(ctx context.Context, path string, env CmdEnv, key, value string) error {
-	current, ok, err := repoConfigContext(ctx, path, env, key)
+func setRepoConfig(ctx context.Context, path string, env CmdEnv, key, value string) error {
+	current, ok, err := repoConfig(ctx, path, env, key)
 	if err != nil {
 		return err
 	}
 	if ok && current == value {
 		return nil
 	}
-	return gitContext(ctx, path, env, "config", key, value)
+	return git(ctx, path, env, "config", key, value)
 }
 
-func unsetRepoConfigContext(ctx context.Context, path string, env CmdEnv, key string) error {
-	_, ok, err := repoConfigContext(ctx, path, env, key)
+func unsetRepoConfig(ctx context.Context, path string, env CmdEnv, key string) error {
+	_, ok, err := repoConfig(ctx, path, env, key)
 	if err != nil {
 		return err
 	}
 	if !ok {
 		return nil
 	}
-	return gitContext(ctx, path, env, "config", "--unset-all", key)
+	return git(ctx, path, env, "config", "--unset-all", key)
 }
 
-func remoteURLContext(ctx context.Context, path string, env CmdEnv, name string) (string, bool, error) {
-	return repoConfigContext(ctx, path, env, "remote."+name+".url")
+func remoteURL(ctx context.Context, path string, env CmdEnv, name string) (string, bool, error) {
+	return repoConfig(ctx, path, env, "remote."+name+".url")
 }
 
-func repoConfig(path string, env CmdEnv, key string) (string, bool, error) {
-	return repoConfigContext(context.Background(), path, env, key)
-}
-
-func repoConfigContext(ctx context.Context, path string, env CmdEnv, key string) (string, bool, error) {
-	cmd := gitCmdContext(ctx, path, env, "config", "--get", key)
+func repoConfig(ctx context.Context, path string, env CmdEnv, key string) (string, bool, error) {
+	cmd := gitCmd(ctx, path, env, "config", "--get", key)
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
 	cmd.Stdout = &stdout
@@ -328,37 +301,36 @@ func repoConfigContext(ctx context.Context, path string, env CmdEnv, key string)
 	return "", false, fmt.Errorf("git config: %w", err)
 }
 
-func setFetchRefspecContext(ctx context.Context, path string, env CmdEnv, refspec string) error {
-	_ = gitContext(ctx, path, env, "config", "--unset-all", "remote.origin.fetch")
-	return gitContext(ctx, path, env, "config", "--add", "remote.origin.fetch", refspec)
+func setFetchRefspec(ctx context.Context, path string, env CmdEnv, refspec string) error {
+	return git(ctx, path, env, "config", "--replace-all", "remote.origin.fetch", refspec)
 }
 
-func syncBareHeadsContext(ctx context.Context, path, branch string, env CmdEnv) error {
-	remoteHeads, err := listRefsContext(ctx, path, env, "refs/remotes/origin", 3)
+func syncBareHeads(ctx context.Context, path, branch string, env CmdEnv) error {
+	remoteHeads, err := listRefs(ctx, path, env, "refs/remotes/origin", 3)
 	if err != nil {
 		return err
 	}
 	remoteHeads = slices.DeleteFunc(remoteHeads, func(name string) bool {
-		return name == "" || name == "HEAD"
+		return name == "HEAD"
 	})
 	if !slices.Contains(remoteHeads, branch) {
 		return fmt.Errorf("origin branch %s not found", branch)
 	}
 
 	for _, name := range remoteHeads {
-		hash, err := resolveRefContext(ctx, path, env, "refs/remotes/origin/"+name)
+		hash, err := resolveRef(ctx, path, env, "refs/remotes/origin/"+name)
 		if err != nil {
 			return err
 		}
-		if err := gitContext(ctx, path, env, "update-ref", "refs/heads/"+name, hash); err != nil {
+		if err := git(ctx, path, env, "update-ref", "refs/heads/"+name, hash); err != nil {
 			return err
 		}
 	}
-	if err := gitContext(ctx, path, env, "symbolic-ref", "HEAD", "refs/heads/"+branch); err != nil {
+	if err := git(ctx, path, env, "symbolic-ref", "HEAD", "refs/heads/"+branch); err != nil {
 		return err
 	}
 
-	localHeads, err := listRefsContext(ctx, path, env, "refs/heads", 2)
+	localHeads, err := listRefs(ctx, path, env, "refs/heads", 2)
 	if err != nil {
 		return err
 	}
@@ -366,19 +338,15 @@ func syncBareHeadsContext(ctx context.Context, path, branch string, env CmdEnv) 
 		if slices.Contains(remoteHeads, name) {
 			continue
 		}
-		if err := gitContext(ctx, path, env, "update-ref", "-d", "refs/heads/"+name); err != nil {
+		if err := git(ctx, path, env, "update-ref", "-d", "refs/heads/"+name); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func listRefs(path string, env CmdEnv, prefix string, strip int) ([]string, error) {
-	return listRefsContext(context.Background(), path, env, prefix, strip)
-}
-
-func listRefsContext(ctx context.Context, path string, env CmdEnv, prefix string, strip int) ([]string, error) {
-	out, err := gitOutputContext(ctx, path, env,
+func listRefs(ctx context.Context, path string, env CmdEnv, prefix string, strip int) ([]string, error) {
+	out, err := gitOutput(ctx, path, env,
 		"for-each-ref",
 		fmt.Sprintf("--format=%%(refname:strip=%d)", strip),
 		prefix,
@@ -392,22 +360,17 @@ func listRefsContext(ctx context.Context, path string, env CmdEnv, prefix string
 	}), nil
 }
 
-func resolveRef(path string, env CmdEnv, ref string) (string, error) {
-	return resolveRefContext(context.Background(), path, env, ref)
-}
-
-func resolveRefContext(ctx context.Context, path string, env CmdEnv, ref string) (string, error) {
-	out, err := gitOutputContext(ctx, path, env, "rev-parse", ref)
+func resolveRef(ctx context.Context, path string, env CmdEnv, ref string) (string, error) {
+	out, err := gitOutput(ctx, path, env, "rev-parse", ref)
 	if err != nil {
 		return "", err
 	}
 	return strings.TrimSpace(out), nil
 }
 
-// git runs a git command, logging stderr through charm log
-// dir is used as working directory only if it exists
-func gitContext(ctx context.Context, dir string, env CmdEnv, args ...string) error {
-	cmd := gitCmdContext(ctx, dir, env, args...)
+// git runs a git command in dir, logging stderr through charm log
+func git(ctx context.Context, dir string, env CmdEnv, args ...string) error {
+	cmd := gitCmd(ctx, dir, env, args...)
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 	if err := cmd.Run(); err != nil {
@@ -419,12 +382,8 @@ func gitContext(ctx context.Context, dir string, env CmdEnv, args ...string) err
 	return nil
 }
 
-func gitOutput(dir string, env CmdEnv, args ...string) (string, error) {
-	return gitOutputContext(context.Background(), dir, env, args...)
-}
-
-func gitOutputContext(ctx context.Context, dir string, env CmdEnv, args ...string) (string, error) {
-	cmd := gitCmdContext(ctx, dir, env, args...)
+func gitOutput(ctx context.Context, dir string, env CmdEnv, args ...string) (string, error) {
+	cmd := gitCmd(ctx, dir, env, args...)
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
 	cmd.Stdout = &stdout
@@ -438,20 +397,11 @@ func gitOutputContext(ctx context.Context, dir string, env CmdEnv, args ...strin
 	return stdout.String(), nil
 }
 
-func gitCmdContext(ctx context.Context, dir string, env CmdEnv, args ...string) *exec.Cmd {
-	cmd := exec.CommandContext(contextOrBackground(ctx), "git", args...)
-	if info, err := os.Stat(dir); err == nil && info.IsDir() {
-		cmd.Dir = dir
-	}
+func gitCmd(ctx context.Context, dir string, env CmdEnv, args ...string) *exec.Cmd {
+	cmd := exec.CommandContext(ctx, "git", args...)
+	cmd.Dir = dir
 	if len(env) > 0 {
 		cmd.Env = env
 	}
 	return cmd
-}
-
-func contextOrBackground(ctx context.Context) context.Context {
-	if ctx == nil {
-		return context.Background()
-	}
-	return ctx
 }

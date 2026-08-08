@@ -23,21 +23,9 @@ func seedRepo(t *testing.T, dir string) string {
 	if err := os.MkdirAll(src, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	env := append(os.Environ(),
-		"GIT_AUTHOR_NAME=test", "GIT_AUTHOR_EMAIL=t@t",
-		"GIT_COMMITTER_NAME=test", "GIT_COMMITTER_EMAIL=t@t",
-	)
-	for _, args := range [][]string{
-		{"init", "--initial-branch=main"},
-		{"commit", "--allow-empty", "-m", "init"},
-	} {
-		cmd := exec.Command("git", args...)
-		cmd.Dir = src
-		cmd.Env = env
-		if out, err := cmd.CombinedOutput(); err != nil {
-			t.Fatalf("git %v: %s: %s", args, err, out)
-		}
-	}
+	env := gitEnv()
+	gitRun(t, src, env, "init", "--initial-branch=main")
+	gitRun(t, src, env, "commit", "--allow-empty", "-m", "init")
 	return src
 }
 
@@ -51,8 +39,8 @@ func TestFetchCloneBare(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	r := Repo{Name: "test", URI: src, Branch: "main"}
-	path, err := Fetch(dest, r, true, nil)
+	r := Repo{Name: "test", IndexName: "test", URI: src, Branch: "main"}
+	path, err := Fetch(t.Context(), dest, r, true, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -74,8 +62,8 @@ func TestFetchCloneNonBare(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	r := Repo{Name: "test", URI: src, Branch: "main"}
-	path, err := Fetch(dest, r, false, nil)
+	r := Repo{Name: "test", IndexName: "test", URI: src, Branch: "main"}
+	path, err := Fetch(t.Context(), dest, r, false, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -99,8 +87,8 @@ func TestFetchStatError(t *testing.T) {
 	os.Chmod(noread, 0o000)
 	t.Cleanup(func() { os.Chmod(noread, 0o755) })
 
-	r := Repo{Name: "test", URI: "unused", Branch: "main"}
-	_, err := Fetch(noread, r, true, nil)
+	r := Repo{Name: "test", IndexName: "test", URI: "unused", Branch: "main"}
+	_, err := Fetch(t.Context(), noread, r, true, nil)
 	if err == nil {
 		t.Error("expected error for stat failure")
 	}
@@ -116,13 +104,13 @@ func TestFetchExisting(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	r := Repo{Name: "test", URI: src, Branch: "main"}
+	r := Repo{Name: "test", IndexName: "test", URI: src, Branch: "main"}
 	// first call clones
-	if _, err := Fetch(dest, r, true, nil); err != nil {
+	if _, err := Fetch(t.Context(), dest, r, true, nil); err != nil {
 		t.Fatal(err)
 	}
 	// second call fetches (should not error)
-	if _, err := Fetch(dest, r, true, nil); err != nil {
+	if _, err := Fetch(t.Context(), dest, r, true, nil); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -137,8 +125,8 @@ func TestFetchPicksUpNewCommits(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	r := Repo{Name: "test", URI: src, Branch: "main"}
-	path, err := Fetch(dest, r, true, nil)
+	r := Repo{Name: "test", IndexName: "test", URI: src, Branch: "main"}
+	path, err := Fetch(t.Context(), dest, r, true, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -147,19 +135,10 @@ func TestFetchPicksUpNewCommits(t *testing.T) {
 	old := gitRev(t, path, "main")
 
 	// add a new commit to the source repo
-	env := append(os.Environ(),
-		"GIT_AUTHOR_NAME=test", "GIT_AUTHOR_EMAIL=t@t",
-		"GIT_COMMITTER_NAME=test", "GIT_COMMITTER_EMAIL=t@t",
-	)
-	cmd := exec.Command("git", "commit", "--allow-empty", "-m", "second")
-	cmd.Dir = src
-	cmd.Env = env
-	if out, err := cmd.CombinedOutput(); err != nil {
-		t.Fatalf("git commit: %s: %s", err, out)
-	}
+	gitRun(t, src, gitEnv(), "commit", "--allow-empty", "-m", "second")
 
 	// fetch again
-	if _, err := Fetch(dest, r, true, nil); err != nil {
+	if _, err := Fetch(t.Context(), dest, r, true, nil); err != nil {
 		t.Fatal(err)
 	}
 
@@ -179,8 +158,8 @@ func TestFetchContextCanceledBootstrapCleansTempBare(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
-	r := Repo{Name: "test", URI: src, Branch: "main"}
-	_, err := FetchContext(ctx, dest, r, true, nil)
+	r := Repo{Name: "test", IndexName: "test", URI: src, Branch: "main"}
+	_, err := Fetch(ctx, dest, r, true, nil)
 	if err == nil {
 		t.Fatal("expected canceled fetch error")
 	}
@@ -208,7 +187,7 @@ func TestFetchContextCanceledDuringBootstrapFetchCleansTempBare(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
 	go func() {
-		_, err := FetchContext(ctx, dest, Repo{Name: "test", URI: src, Branch: "main"}, true, nil)
+		_, err := Fetch(ctx, dest, Repo{Name: "test", IndexName: "test", URI: src, Branch: "main"}, true, nil)
 		done <- err
 	}()
 
@@ -239,8 +218,8 @@ func TestFetchContextCanceledBootstrapCleansTempNonBare(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
-	r := Repo{Name: "test", URI: src, Branch: "main"}
-	_, err := FetchContext(ctx, dest, r, false, nil)
+	r := Repo{Name: "test", IndexName: "test", URI: src, Branch: "main"}
+	_, err := Fetch(ctx, dest, r, false, nil)
 	if err == nil {
 		t.Fatal("expected canceled fetch error")
 	}
@@ -268,7 +247,7 @@ func TestFetchContextCanceledDuringBootstrapCloneCleansTempNonBare(t *testing.T)
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
 	go func() {
-		_, err := FetchContext(ctx, dest, Repo{Name: "test", URI: src, Branch: "main"}, false, nil)
+		_, err := Fetch(ctx, dest, Repo{Name: "test", IndexName: "test", URI: src, Branch: "main"}, false, nil)
 		done <- err
 	}()
 
@@ -299,16 +278,7 @@ func TestFetchBareRejectsFilePathBeforeGitRuns(t *testing.T) {
 	if err := os.MkdirAll(cwdRepo, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	env := append(os.Environ(),
-		"GIT_AUTHOR_NAME=test", "GIT_AUTHOR_EMAIL=t@t",
-		"GIT_COMMITTER_NAME=test", "GIT_COMMITTER_EMAIL=t@t",
-	)
-	cmd := exec.Command("git", "init", "--initial-branch=main")
-	cmd.Dir = cwdRepo
-	cmd.Env = env
-	if out, err := cmd.CombinedOutput(); err != nil {
-		t.Fatalf("git init cwd repo: %s: %s", err, out)
-	}
+	gitRun(t, cwdRepo, gitEnv(), "init", "--initial-branch=main")
 
 	dest := filepath.Join(tmp, "repos")
 	if err := os.MkdirAll(dest, 0o755); err != nil {
@@ -328,12 +298,12 @@ func TestFetchBareRejectsFilePathBeforeGitRuns(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	r := Repo{Name: "test", URI: src, Branch: "main"}
-	if _, err := Fetch(dest, r, true, nil); err == nil {
+	r := Repo{Name: "test", IndexName: "test", URI: src, Branch: "main"}
+	if _, err := Fetch(t.Context(), dest, r, true, nil); err == nil {
 		t.Fatal("expected file path error")
 	}
 
-	cmd = exec.Command("git", "remote", "get-url", "origin")
+	cmd := exec.Command("git", "remote", "get-url", "origin")
 	cmd.Dir = cwdRepo
 	if out, err := cmd.CombinedOutput(); err == nil {
 		t.Fatalf("expected cwd repo to stay untouched got %s", out)
@@ -349,16 +319,7 @@ func TestFetchNonBareRejectsFilePathBeforeGitRuns(t *testing.T) {
 	if err := os.MkdirAll(cwdRepo, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	env := append(os.Environ(),
-		"GIT_AUTHOR_NAME=test", "GIT_AUTHOR_EMAIL=t@t",
-		"GIT_COMMITTER_NAME=test", "GIT_COMMITTER_EMAIL=t@t",
-	)
-	cmd := exec.Command("git", "init", "--initial-branch=main")
-	cmd.Dir = cwdRepo
-	cmd.Env = env
-	if out, err := cmd.CombinedOutput(); err != nil {
-		t.Fatalf("git init cwd repo: %s: %s", err, out)
-	}
+	gitRun(t, cwdRepo, gitEnv(), "init", "--initial-branch=main")
 
 	dest := filepath.Join(tmp, "repos")
 	if err := os.MkdirAll(dest, 0o755); err != nil {
@@ -378,12 +339,12 @@ func TestFetchNonBareRejectsFilePathBeforeGitRuns(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	r := Repo{Name: "test", URI: src, Branch: "main"}
-	if _, err := Fetch(dest, r, false, nil); err == nil {
+	r := Repo{Name: "test", IndexName: "test", URI: src, Branch: "main"}
+	if _, err := Fetch(t.Context(), dest, r, false, nil); err == nil {
 		t.Fatal("expected file path error")
 	}
 
-	cmd = exec.Command("git", "remote", "get-url", "origin")
+	cmd := exec.Command("git", "remote", "get-url", "origin")
 	cmd.Dir = cwdRepo
 	if out, err := cmd.CombinedOutput(); err == nil {
 		t.Fatalf("expected cwd repo to stay untouched got %s", out)
