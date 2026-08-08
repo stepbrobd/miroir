@@ -3,6 +3,7 @@ package index
 import (
 	"context"
 	"errors"
+	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -363,6 +364,57 @@ func TestRunCancelWaitsForActiveIndex(t *testing.T) {
 	}
 }
 
+func TestRunReturnsServerErrorWithoutWaitingForFullCycle(t *testing.T) {
+	skipNoGit(t)
+	tmp := t.TempDir()
+	src := seedRepoWithFile(t, tmp, "hello.go", "package main\n")
+
+	home := filepath.Join(tmp, "repos")
+	db := filepath.Join(tmp, "shards")
+	if err := os.MkdirAll(home, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(db, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	// the bootstrap fetch blocks until killed, so Run can only return
+	// promptly if the server failure cancels the in-flight cycle
+	mark := filepath.Join(tmp, "fetch-started")
+	installBlockingGitWrapper(t, tmp, ".seed.git.tmp-*", "fetch", mark)
+
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ln.Close()
+
+	c := &Cfg{
+		Listen:   ln.Addr().String(),
+		Database: db,
+		Interval: time.Hour,
+		Bare:     true,
+		Home:     home,
+		Env:      CmdEnv(gitEnv()),
+		Repos:    []Repo{{Name: "seed", IndexName: "seed", URI: src, Branch: "main"}},
+	}
+
+	done := make(chan error, 1)
+	go func() { done <- Run(t.Context(), c) }()
+
+	select {
+	case err := <-done:
+		if err == nil || errors.Is(err, context.Canceled) {
+			t.Fatalf("expected bind error, got %v", err)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("Run did not return after server failure")
+	}
+	if _, err := os.Stat(filepath.Join(home, "seed.git")); !os.IsNotExist(err) {
+		t.Fatalf("expected aborted cycle to leave no repo, got %v", err)
+	}
+}
+
 func TestCycleWithInclude(t *testing.T) {
 	skipNoGit(t)
 	tmp := t.TempDir()
@@ -528,6 +580,46 @@ func TestCycleRemovesOrphanedTempDirs(t *testing.T) {
 	if err := os.MkdirAll(orphan, 0o755); err != nil {
 		t.Fatal(err)
 	}
+	unrelated := filepath.Join(home, ".other.tmp-x")
+	if err := os.MkdirAll(unrelated, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	src := seedRepoWithFile(t, tmp, "hello.go", "package main\n")
+	c := &Cfg{
+		Listen:   ":0",
+		Database: db,
+		Interval: time.Hour,
+		Bare:     true,
+		Home:     home,
+		Repos:    []Repo{{Name: "seed", IndexName: "seed", URI: src, Branch: "main"}},
+	}
+
+	cycle(t.Context(), c)
+	if _, err := os.Stat(orphan); !os.IsNotExist(err) {
+		t.Fatalf("expected orphaned temp dir removed got %v", err)
+	}
+	if _, err := os.Stat(unrelated); err != nil {
+		t.Fatalf("expected unrelated hidden dir kept got %v", err)
+	}
+}
+
+func TestCycleRemovesMarkedTempDirOfRemovedRepo(t *testing.T) {
+	skipNoGit(t)
+	tmp := t.TempDir()
+	home := filepath.Join(tmp, "repos")
+	db := filepath.Join(tmp, "shards")
+	if err := os.MkdirAll(home, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(db, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	// a crash orphan for a repo no longer in config carries the marker
+	orphan := filepath.Join(home, ".gone.git.tmp-xyz")
+	gitRun(t, tmp, gitEnv(), "init", "--bare", orphan)
+	gitRun(t, orphan, gitEnv(), "config", "miroir.managed", "true")
 
 	c := &Cfg{
 		Listen:   ":0",
@@ -539,7 +631,7 @@ func TestCycleRemovesOrphanedTempDirs(t *testing.T) {
 
 	cycle(t.Context(), c)
 	if _, err := os.Stat(orphan); !os.IsNotExist(err) {
-		t.Fatalf("expected orphaned temp dir removed got %v", err)
+		t.Fatalf("expected marked temp dir removed got %v", err)
 	}
 }
 

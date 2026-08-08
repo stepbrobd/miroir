@@ -1,6 +1,7 @@
 package forge
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -43,12 +44,14 @@ func TestDispatch(t *testing.T) {
 }
 
 func TestNewGithubDomains(t *testing.T) {
-	g, err := newGithub("t", "github.com")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got := g.c.BaseURL.String(); got != "https://api.github.com/" {
-		t.Errorf("github.com base url: got %q", got)
+	for _, domain := range []string{"github.com", "GitHub.com"} {
+		g, err := newGithub("t", domain)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := g.c.BaseURL.String(); got != "https://api.github.com/" {
+			t.Errorf("%s base url: got %q", domain, got)
+		}
 	}
 
 	e, err := newGithub("t", "github.example.com")
@@ -133,11 +136,20 @@ func TestGithubSyncNoopWhenUpToDate(t *testing.T) {
 }
 
 func TestGithubSyncUnarchivesBeforeUpdate(t *testing.T) {
+	var mu sync.Mutex
+	var patches []map[string]any
 	f, log := ghTestForge(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == "GET" {
 			fmt.Fprint(w, `{"name":"x","description":"old","private":true,"archived":true}`)
 			return
 		}
+		var body map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Errorf("decode patch body: %v", err)
+		}
+		mu.Lock()
+		patches = append(patches, body)
+		mu.Unlock()
 		fmt.Fprint(w, `{"name":"x"}`)
 	}))
 	desc := "new"
@@ -147,6 +159,19 @@ func TestGithubSyncUnarchivesBeforeUpdate(t *testing.T) {
 	want := []string{"GET /repos/alice/x", "PATCH /repos/alice/x", "PATCH /repos/alice/x"}
 	if got := log.get(); !equalStrings(got, want) {
 		t.Fatalf("requests: got %v want %v", got, want)
+	}
+	if len(patches) != 2 {
+		t.Fatalf("patches: got %d, want 2", len(patches))
+	}
+	// the first patch must only unarchive, the second carries the update
+	if v, ok := patches[0]["archived"].(bool); !ok || v {
+		t.Fatalf("first patch should set archived=false, got %v", patches[0])
+	}
+	if _, ok := patches[0]["description"]; ok {
+		t.Fatalf("first patch should not carry the update, got %v", patches[0])
+	}
+	if v, _ := patches[1]["description"].(string); v != "new" {
+		t.Fatalf("second patch should update description, got %v", patches[1])
 	}
 }
 

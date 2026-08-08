@@ -418,16 +418,18 @@ func TestValidateRejectsNonFlatRepoNames(t *testing.T) {
 }
 
 func TestValidateRejectsNonPositiveInterval(t *testing.T) {
-	_, err := Parse(`
+	for _, interval := range []string{"0", "-1"} {
+		_, err := Parse(`
 [platform.a]
 origin = true
 domain = "a.com"
 
 [index]
-interval = 0
+interval = ` + interval + `
 `)
-	if err == nil {
-		t.Fatal("expected interval validation error")
+		if err == nil {
+			t.Fatalf("expected interval validation error for %s", interval)
+		}
 	}
 }
 

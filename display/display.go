@@ -120,9 +120,6 @@ func (d *Display) renderLine(l line) string {
 }
 
 func (d *Display) reserve(lines int) {
-	if lines <= 0 {
-		return
-	}
 	var buf strings.Builder
 	for range lines {
 		buf.WriteByte('\n')

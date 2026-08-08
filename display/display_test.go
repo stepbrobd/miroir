@@ -47,6 +47,21 @@ func TestGridIndexingSecondSlot(t *testing.T) {
 	}
 }
 
+func TestGridErrorLinesRender(t *testing.T) {
+	v := true
+	d := New(1, 1, DefaultTheme, &v)
+	_ = captureStdout(t, func() {
+		d.ErrorRemote(0, 0, "origin :: error")
+		d.ErrorOutput(0, 0, "boom")
+	})
+	if d.lines[1].kind != lineErrorRemote || d.lines[1].text != "origin :: error" {
+		t.Errorf("error remote line: got %+v", d.lines[1])
+	}
+	if d.lines[2].kind != lineErrorOutput || d.lines[2].text != "boom" {
+		t.Errorf("error output line: got %+v", d.lines[2])
+	}
+}
+
 func TestFinishWithoutDrawEmitsNothing(t *testing.T) {
 	v := true
 	d := New(1, 1, DefaultTheme, &v)

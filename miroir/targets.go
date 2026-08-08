@@ -23,7 +23,7 @@ type SelectOptions struct {
 func resolveNames(names []string, home string, opts SelectOptions) ([]string, error) {
 	if opts.Name != "" {
 		if !slices.Contains(names, opts.Name) {
-			return nil, fmt.Errorf("repo '%s' not found in config", opts.Name)
+			return nil, fmt.Errorf("repo %q not found in config", opts.Name)
 		}
 		return []string{opts.Name}, nil
 	}

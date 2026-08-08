@@ -16,7 +16,7 @@ type ghForge struct {
 
 func newGithub(token, domain string) (*ghForge, error) {
 	c := gh.NewClient(nil)
-	if domain != "github.com" {
+	if !strings.EqualFold(domain, "github.com") {
 		var err error
 		// go-github appends /api/v3/ and /api/uploads/ itself
 		c, err = c.WithEnterpriseURLs("https://"+domain, "https://"+domain)

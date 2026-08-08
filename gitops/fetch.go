@@ -42,9 +42,13 @@ func (Fetch) Run(p Params) error {
 			p.Disp.Remote(p.Slot, j, fmt.Sprintf("%s :: fetching...", r.Name))
 			// concurrent fetches into one repo race on commit-graph
 			// and auto-gc lock files
+			// suppression uses config keys, not --no-auto-maintenance,
+			// so any git version accepts the command
 			args := []string{
 				"-c", "fetch.writeCommitGraph=false",
-				"fetch", "--no-auto-maintenance", r.GitName,
+				"-c", "maintenance.auto=false",
+				"-c", "gc.auto=0",
+				"fetch", r.GitName,
 			}
 			err := run(p.RunCtx, p.Path, p.Ctx.Env, false,
 				func(s string) { p.Disp.Output(p.Slot, j, s) },

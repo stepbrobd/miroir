@@ -7,6 +7,7 @@ import (
 
 	"github.com/adrg/xdg"
 
+	"ysun.co/miroir/config"
 	"ysun.co/miroir/gitops"
 )
 
@@ -101,6 +102,46 @@ func TestConfigPathNoConfig(t *testing.T) {
 	_, err := configPath()
 	if err == nil {
 		t.Fatal("expected error when no config file exists")
+	}
+}
+
+func TestRunSweep(t *testing.T) {
+	home := t.TempDir()
+	for _, d := range []string{"live", "old", "untracked"} {
+		if err := os.MkdirAll(filepath.Join(home, d), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	cfg = &config.Config{
+		General: config.General{Home: home},
+		Repo: map[string]config.Repo{
+			"live": {},
+			"old":  {Archived: true},
+		},
+	}
+
+	forceFlag = false
+	if err := runSweep(); err != nil {
+		t.Fatal(err)
+	}
+	for _, d := range []string{"live", "old", "untracked"} {
+		if _, err := os.Stat(filepath.Join(home, d)); err != nil {
+			t.Fatalf("dry run removed %s: %v", d, err)
+		}
+	}
+
+	forceFlag = true
+	t.Cleanup(func() { forceFlag = false })
+	if err := runSweep(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(home, "live")); err != nil {
+		t.Fatalf("live repo should be kept: %v", err)
+	}
+	for _, d := range []string{"old", "untracked"} {
+		if _, err := os.Stat(filepath.Join(home, d)); !os.IsNotExist(err) {
+			t.Fatalf("%s should be removed, got %v", d, err)
+		}
 	}
 }
 

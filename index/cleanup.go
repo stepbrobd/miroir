@@ -26,10 +26,30 @@ func activeManagedShardNames(c *Cfg) map[string]string {
 	return names
 }
 
-// orphanTempDir reports bootstrap temp dirs left behind by a crash
-// tempRepoDir names them .<repo>.tmp-<rand>
-func orphanTempDir(entry string) bool {
-	return strings.HasPrefix(entry, ".") && strings.Contains(entry, ".tmp-")
+// tempRepoDir names bootstrap temp dirs .<repo dir>.tmp-<rand>
+func orphanTempPrefixes(c *Cfg) []string {
+	prefixes := make([]string, 0, len(c.Repos))
+	for _, r := range c.Repos {
+		prefixes = append(prefixes, "."+filepath.Base(repoPath(c.Home, r.Name, c.Bare))+".tmp-")
+	}
+	return prefixes
+}
+
+// home may be a mixed folder, so only dirs provably owned by miroir are
+// treated as crash orphans
+// a temp dir for a repo since removed from config is identified by the
+// miroir.managed marker its bootstrap already wrote
+func orphanTempDir(c *Cfg, entry string, prefixes []string) bool {
+	if !strings.HasPrefix(entry, ".") || !strings.Contains(entry, ".tmp-") {
+		return false
+	}
+	for _, p := range prefixes {
+		if strings.HasPrefix(entry, p) {
+			return true
+		}
+	}
+	marker, ok, err := repoConfig(context.Background(), filepath.Join(c.Home, entry), c.Env, "miroir.managed")
+	return err == nil && ok && marker == "true"
 }
 
 func cleanupManagedRepoDirs(c *Cfg) error {
@@ -42,11 +62,12 @@ func cleanupManagedRepoDirs(c *Cfg) error {
 	}
 
 	active := activeManagedRepoPaths(c)
+	tempPrefixes := orphanTempPrefixes(c)
 	for _, entry := range entries {
 		if !entry.IsDir() {
 			continue
 		}
-		if orphanTempDir(entry.Name()) {
+		if orphanTempDir(c, entry.Name(), tempPrefixes) {
 			path := filepath.Join(c.Home, entry.Name())
 			if err := os.RemoveAll(path); err != nil {
 				return err

@@ -3,6 +3,9 @@ package miroir
 import (
 	"context"
 	"errors"
+	"os"
+	"slices"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -15,6 +18,8 @@ import (
 type fakeReporter struct {
 	mu         sync.Mutex
 	repoMsgs   []string
+	remoteMsgs []string
+	outputMsgs []string
 	clearSlots []int
 	finished   bool
 }
@@ -24,8 +29,16 @@ func (f *fakeReporter) Repo(_ int, msg string) {
 	defer f.mu.Unlock()
 	f.repoMsgs = append(f.repoMsgs, msg)
 }
-func (f *fakeReporter) Remote(_, _ int, _ string)      {}
-func (f *fakeReporter) Output(_, _ int, _ string)      {}
+func (f *fakeReporter) Remote(_, _ int, msg string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.remoteMsgs = append(f.remoteMsgs, msg)
+}
+func (f *fakeReporter) Output(_, _ int, msg string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.outputMsgs = append(f.outputMsgs, msg)
+}
 func (f *fakeReporter) ErrorRemote(_, _ int, _ string) {}
 func (f *fakeReporter) ErrorOutput(_, _ int, _ string) {}
 func (f *fakeReporter) Clear(slot int) {
@@ -227,6 +240,44 @@ func TestRunGitOpRemoteLimitIsPerRepo(t *testing.T) {
 	close(release)
 	if err := <-done; err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestRunSyncSkipsUnknownForgeAndMissingToken(t *testing.T) {
+	os.Unsetenv("MIROIR_UNKNOWN_TOKEN")
+	os.Unsetenv("MIROIR_NOTOKEN_TOKEN")
+
+	reporter := &fakeReporter{}
+	cfg := &config.Config{
+		General: config.General{
+			Concurrency: config.Concurrency{Repo: 1, Remote: 2},
+		},
+		Platform: map[string]config.Platform{
+			"unknown": {Domain: "example.com", User: "alice"},
+			"notoken": {Domain: "github.com", User: "alice"},
+		},
+		Repo: map[string]config.Repo{
+			"seed": {Visibility: config.Private},
+		},
+	}
+
+	if err := RunSync(t.Context(), cfg, []string{"seed"}, reporter); err != nil {
+		t.Fatal(err)
+	}
+	skips := 0
+	for _, m := range reporter.remoteMsgs {
+		if strings.Contains(m, "skipped") {
+			skips++
+		}
+	}
+	if skips != 2 {
+		t.Fatalf("expected both platforms skipped, got %v", reporter.remoteMsgs)
+	}
+	if !slices.Contains(reporter.outputMsgs, "unknown forge") {
+		t.Fatalf("expected unknown forge output, got %v", reporter.outputMsgs)
+	}
+	if !slices.Contains(reporter.outputMsgs, "no token") {
+		t.Fatalf("expected no token output, got %v", reporter.outputMsgs)
 	}
 }
 

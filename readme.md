@@ -150,7 +150,7 @@ characters are replaced with `_`, so `gitlab-main` maps to
 | ---------- | ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `listen`   | `:6070`                       | HTTP listen address                                                                                                                               |
 | `database` | `$XDG_DATA_HOME/miroir/index` | Directory for zoekt index shards                                                                                                                  |
-| `interval` | `300`                         | Seconds between fetch+index cycles                                                                                                                |
+| `interval` | `300`                         | Seconds between fetch+index cycles, must be at least `1`                                                                                          |
 | `bare`     | `true`                        | `true` keeps a daemon-owned bare repo synced from origin and indexes `HEAD` `false` keeps a normal clone and indexes the local checked out `HEAD` |
 | `include`  | `[]`                          | Extra directories to discover repos (1 level)                                                                                                     |
 
@@ -172,6 +172,12 @@ By default, miroir targets the repo matching your current directory.
 - `-n, --name <repo>` -- Target a specific repo by name
 - `-a, --all` -- Target all non-archived repos
 - `-f, --force` -- Force operation
+
+Flags are scoped per command: `-n`/`-a` apply to `init`, `fetch`, `pull`,
+`push`, `exec`, and `sync`. `-f` applies to `init`, `fetch`, `pull`, `push`, and
+`sweep`. `--tty`/`--no-tty` apply to the commands that render progress output
+(`init`, `fetch`, `pull`, `push`, `exec`, `sync`). A flag a command does not
+take is rejected with an error rather than silently ignored.
 
 ### Commands
 
@@ -243,9 +249,9 @@ miroir sweep -f               # Actually delete
 directory. It is intended for dedicated miroir workspaces, not mixed folders
 such as a general `~/Workspace`.
 
-`sweep` does not use `--name` or `--all` to narrow its scope. It always scans
-the whole workspace root and removes directories for archived repos plus
-directories not present in `[repo.*]`.
+`sweep` rejects `--name` and `--all`. It always scans the whole workspace root
+and removes directories for archived repos plus directories not present in
+`[repo.*]`.
 
 **index** -- Start the index daemon (server-side)
 
