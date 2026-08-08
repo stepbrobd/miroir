@@ -31,10 +31,9 @@ GitHub (or any other forge):
 > the source of truth for every configured forge. It will set repos `private`
 > when the config says so (on GitHub this wipes stars, forks, and watchers,
 > because they are public-graph artifacts attached to the public listing), flip
-> `archived`, and overwrite descriptions. The forge layer also implements repo
-> deletion across every supported provider, so a typo or a misaimed config
-> against the wrong account can do real damage. Review your TOML carefully, try
-> a single repo end-to-end before `-a`, and keep the source forge intact until
+> `archived`, and overwrite descriptions. A typo or a misaimed config against
+> the wrong account can do real damage. Review your TOML carefully, try a
+> single repo end-to-end before `-a`, and keep the source forge intact until
 > you have verified the destination.
 
 ## Config
@@ -45,6 +44,9 @@ Miroir looks for config in this order:
 2. `MIROIR_CONFIG` environment variable
 3. `$XDG_CONFIG_HOME/miroir/config.toml` (typically
    `~/.config/miroir/config.toml`)
+
+Unknown or misspelled keys are rejected at load time, so a typo cannot silently
+fall back to a default that `sync` would then reconcile onto your forges.
 
 ### Example
 
@@ -297,12 +299,15 @@ miroir completion fish > ~/.config/fish/completions/miroir.fish
 
 ## Supported Forges
 
-| Forge     | Create | Update | Archive | Delete | List | Sync |
-| --------- | ------ | ------ | ------- | ------ | ---- | ---- |
-| GitHub    | Yes    | Yes    | Yes     | Yes    | Yes  | Yes  |
-| GitLab    | Yes    | Yes    | Yes     | Yes    | Yes  | Yes  |
-| Codeberg  | Yes    | Yes    | Yes     | Yes    | Yes  | Yes  |
-| SourceHut | Yes    | Yes    | No      | Yes    | Yes  | Yes  |
+| Forge     | Sync | Archive via sync |
+| --------- | ---- | ---------------- |
+| GitHub    | Yes  | Yes              |
+| GitLab    | Yes  | Yes              |
+| Codeberg  | Yes  | Yes              |
+| SourceHut | Yes  | No               |
+
+`sync` creates missing repos and updates description, visibility, and archived
+state on existing ones.
 
 Forge type is auto-detected from the platform domain:
 
@@ -311,7 +316,9 @@ Forge type is auto-detected from the platform domain:
 - `codeberg.org` -- Codeberg
 - `*.sr.ht`, `sr.ht` -- SourceHut
 
-Set `forge = "..."` explicitly to override.
+Set `forge = "..."` explicitly to override. Forge API calls target the
+configured domain, so GitHub Enterprise, self-hosted GitLab, and Gitea or
+Forgejo instances (via `forge = "codeberg"`) work with an explicit setting.
 
 ## Concurrency
 
