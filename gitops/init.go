@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 )
 
 type Init struct{}
@@ -19,20 +20,20 @@ func (Init) Run(p Params) error {
 	info := func(s string) { p.Disp.Remote(p.Slot, j, s) }
 
 	info("initializing...")
-	gitDir := p.Path + "/.git"
+	gitDir := filepath.Join(p.Path, ".git")
 	if _, err := os.Stat(gitDir); os.IsNotExist(err) {
 		if err := os.MkdirAll(p.Path, 0o755); err != nil {
 			return err
 		}
-		args := append([]string{"init", "--initial-branch=" + p.Ctx.Branch}, p.Args...)
-		if err := runContext(p.RunCtx, p.Path, p.Ctx.Env, false, out, args...); err != nil {
+		if err := run(p.RunCtx, p.Path, p.Ctx.Env, false, out,
+			"init", "--initial-branch="+p.Ctx.Branch); err != nil {
 			return err
 		}
 	} else {
 		if err := ensureRepo(p.Path); err != nil {
 			return err
 		}
-		dirty, err := isDirtyContext(p.RunCtx, p.Path, p.Ctx.Env)
+		dirty, err := isDirty(p.RunCtx, p.Path, p.Ctx.Env)
 		if err != nil {
 			return err
 		}
@@ -43,7 +44,7 @@ func (Init) Run(p Params) error {
 		}
 		if p.Force {
 			info("cleaning untracked files...")
-			if err := runContext(p.RunCtx, p.Path, p.Ctx.Env, true, nil,
+			if err := run(p.RunCtx, p.Path, p.Ctx.Env, true, nil,
 				"clean", "-fd"); err != nil {
 				return err
 			}
@@ -52,13 +53,11 @@ func (Init) Run(p Params) error {
 
 	info("adding remotes...")
 	setRemote := func(rname, uri string) error {
-		_ = runContext(p.RunCtx, p.Path, p.Ctx.Env, true, nil, "remote", "remove", rname)
-		return runContext(p.RunCtx, p.Path, p.Ctx.Env, true, nil, "remote", "add", rname, uri)
+		_ = run(p.RunCtx, p.Path, p.Ctx.Env, true, nil, "remote", "remove", rname)
+		return run(p.RunCtx, p.Path, p.Ctx.Env, true, nil, "remote", "add", rname, uri)
 	}
-	if len(p.Ctx.Fetch) == 1 {
-		if err := setRemote("origin", p.Ctx.Fetch[0].URI); err != nil {
-			return err
-		}
+	if err := setRemote("origin", p.Ctx.Origin.URI); err != nil {
+		return err
 	}
 	for _, r := range p.Ctx.Push {
 		if err := setRemote(r.Name, r.URI); err != nil {
@@ -68,30 +67,30 @@ func (Init) Run(p Params) error {
 
 	info("fetching...")
 	fetchArgs := append([]string{"fetch", "--all"}, p.Args...)
-	if err := runContext(p.RunCtx, p.Path, p.Ctx.Env, false, out, fetchArgs...); err != nil {
+	if err := run(p.RunCtx, p.Path, p.Ctx.Env, false, out, fetchArgs...); err != nil {
 		return err
 	}
 
 	info("resetting...")
-	if err := runContext(p.RunCtx, p.Path, p.Ctx.Env, false, out,
+	if err := run(p.RunCtx, p.Path, p.Ctx.Env, false, out,
 		"reset", "--hard", "origin/"+p.Ctx.Branch); err != nil {
 		return err
 	}
 
 	info("checking out...")
-	if err := runContext(p.RunCtx, p.Path, p.Ctx.Env, false, out,
+	if err := run(p.RunCtx, p.Path, p.Ctx.Env, false, out,
 		"checkout", p.Ctx.Branch); err != nil {
 		return err
 	}
 
 	info("updating submodules...")
-	if err := runContext(p.RunCtx, p.Path, p.Ctx.Env, false, out,
+	if err := run(p.RunCtx, p.Path, p.Ctx.Env, false, out,
 		"submodule", "update", "--recursive", "--init"); err != nil {
 		return err
 	}
 
 	info("setting upstream...")
-	err := runContext(p.RunCtx, p.Path, p.Ctx.Env, false, out,
+	err := run(p.RunCtx, p.Path, p.Ctx.Env, false, out,
 		"branch", "--set-upstream-to=origin/"+p.Ctx.Branch, p.Ctx.Branch)
 	if err != nil {
 		p.Disp.ErrorRemote(p.Slot, j, fmt.Sprintf("error: %s", err))

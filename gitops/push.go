@@ -32,17 +32,15 @@ func (Push) Run(p Params) error {
 		wg sync.WaitGroup
 	)
 
-	for _, r := range p.Ctx.Push {
+	for j, r := range p.Ctx.Push {
 		wg.Add(1)
-		go func(r workspace.Remote) {
+		go func(j int, r workspace.Remote) {
 			defer wg.Done()
-			j := remoteIndex(p.Ctx, r.Name)
-			ctx := contextOrBackground(p.RunCtx)
 			p.Disp.Remote(p.Slot, j, fmt.Sprintf("%s :: waiting...", r.Name))
 			select {
 			case p.Sem <- struct{}{}:
 				defer func() { <-p.Sem }()
-			case <-ctx.Done():
+			case <-p.RunCtx.Done():
 				return
 			}
 
@@ -50,7 +48,7 @@ func (Push) Run(p Params) error {
 			args := append([]string{"push"}, forceArgs...)
 			args = append(args, r.GitName, p.Ctx.Branch)
 			args = append(args, p.Args...)
-			err := runContext(ctx, p.Path, p.Ctx.Env, false,
+			err := run(p.RunCtx, p.Path, p.Ctx.Env, false,
 				func(s string) { p.Disp.Output(p.Slot, j, s) },
 				args...)
 
@@ -66,13 +64,13 @@ func (Push) Run(p Params) error {
 				err  error
 			}{r.Name, err})
 			mu.Unlock()
-		}(r)
+		}(j, r)
 	}
 	wg.Wait()
 
 	for _, r := range results {
 		if r.err != nil {
-			return fmt.Errorf("push to %s failed: %s", r.name, r.err)
+			return fmt.Errorf("push to %s failed: %w", r.name, r.err)
 		}
 	}
 	return nil

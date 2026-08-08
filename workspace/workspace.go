@@ -20,10 +20,11 @@ type Remote struct {
 }
 
 // context holds derived git execution settings for one managed repository
+// origin repeats the origin platform's push entry under its literal git name
 type Context struct {
 	Env    []string
 	Branch string
-	Fetch  []Remote
+	Origin Remote
 	Push   []Remote
 }
 
@@ -52,7 +53,6 @@ func home() (string, error) {
 	return h, nil
 }
 
-// expands leading ~/ to $HOME
 // expandHome expands a leading ~/ prefix using $HOME
 func ExpandHome(path string) (string, error) {
 	if path == "~" {
@@ -68,58 +68,45 @@ func ExpandHome(path string) (string, error) {
 	return path, nil
 }
 
-// at most one platform may have origin = true per repo
-func makeCtx(env []string, platforms map[string]config.Platform, repo, branch string) (*Context, error) {
+// mergeEnv extends the process environment with config env entries
+// a variable already set in the process environment wins over config
+func MergeEnv(extra map[string]string) []string {
 	base := os.Environ()
-	merged := make([]string, 0, len(base)+len(env))
-	merged = append(merged, env...)
-	merged = append(merged, base...)
-
-	names := slices.Sorted(maps.Keys(platforms))
-	originName := ""
-	for _, n := range names {
-		if platforms[n].Origin {
-			originName = n
-			break
+	if len(extra) == 0 {
+		return base
+	}
+	seen := make(map[string]struct{}, len(base))
+	merged := make([]string, 0, len(base)+len(extra))
+	for _, item := range base {
+		merged = append(merged, item)
+		if name, _, ok := strings.Cut(item, "="); ok {
+			seen[name] = struct{}{}
 		}
 	}
-
-	var fetch []Remote
-	for _, n := range names {
-		p := platforms[n]
-		if p.Origin {
-			fetch = append(fetch, Remote{
-				Name:    n,
-				GitName: "origin",
-				URI:     MakeURI(p.Access, p.Domain, p.User, repo),
-			})
+	for _, k := range slices.Sorted(maps.Keys(extra)) {
+		if _, ok := seen[k]; ok {
+			continue
 		}
+		merged = append(merged, k+"="+extra[k])
 	}
-
-	var push []Remote
-	for _, n := range names {
-		p := platforms[n]
-		gitName := n
-		if n == originName {
-			gitName = "origin"
-		}
-		push = append(push, Remote{
-			Name:    n,
-			GitName: gitName,
-			URI:     MakeURI(p.Access, p.Domain, p.User, repo),
-		})
-	}
-
-	return &Context{Env: merged, Branch: branch, Fetch: fetch, Push: push}, nil
+	return merged
 }
 
-func envSlice(m map[string]string) []string {
-	keys := slices.Sorted(maps.Keys(m))
-	s := make([]string, 0, len(m))
-	for _, k := range keys {
-		s = append(s, k+"="+m[k])
+// makeCtx assumes config validation guaranteed exactly one origin platform
+func makeCtx(env []string, platforms map[string]config.Platform, repo, branch string) *Context {
+	names := slices.Sorted(maps.Keys(platforms))
+	var origin Remote
+	push := make([]Remote, 0, len(names))
+	for _, n := range names {
+		p := platforms[n]
+		r := Remote{Name: n, GitName: n, URI: MakeURI(p.Access, p.Domain, p.User, repo)}
+		if p.Origin {
+			r.GitName = "origin"
+			origin = r
+		}
+		push = append(push, r)
 	}
-	return s
+	return &Context{Env: env, Branch: branch, Origin: origin, Push: push}
 }
 
 // makeAll builds execution contexts for all non-archived managed repositories
@@ -128,22 +115,17 @@ func MakeAll(cfg *config.Config) (map[string]*Context, error) {
 	if err != nil {
 		return nil, err
 	}
-	env := envSlice(cfg.General.Env)
+	env := MergeEnv(cfg.General.Env)
 	ctxs := make(map[string]*Context)
 	for name, repo := range cfg.Repo {
 		if repo.Archived {
 			continue
 		}
-		path := filepath.Join(h, name)
 		branch := cfg.General.Branch
 		if repo.Branch != nil {
 			branch = *repo.Branch
 		}
-		ctx, err := makeCtx(env, cfg.Platform, name, branch)
-		if err != nil {
-			return nil, err
-		}
-		ctxs[path] = ctx
+		ctxs[filepath.Join(h, name)] = makeCtx(env, cfg.Platform, name, branch)
 	}
 	return ctxs, nil
 }

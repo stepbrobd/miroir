@@ -2,6 +2,7 @@ package workspace
 
 import (
 	"os"
+	"slices"
 	"testing"
 
 	"ysun.co/miroir/config"
@@ -109,17 +110,36 @@ func TestMakeAll(t *testing.T) {
 		t.Errorf("custom branch: got %q, want %q", custom.Branch, "develop")
 	}
 
-	if len(active.Fetch) != 1 {
-		t.Errorf("active fetch remotes: got %d, want 1", len(active.Fetch))
-	}
 	if len(active.Push) != 1 {
 		t.Errorf("active push remotes: got %d, want 1", len(active.Push))
 	}
-	if active.Fetch[0].GitName != "origin" {
-		t.Errorf("fetch git name: got %q, want origin", active.Fetch[0].GitName)
+	if active.Origin.Name != "github" || active.Origin.GitName != "origin" {
+		t.Errorf("origin remote: got %+v", active.Origin)
 	}
-	if active.Push[0].Name != "github" || active.Push[0].GitName != "origin" {
-		t.Errorf("push remote: got %+v", active.Push[0])
+	if active.Origin.URI != "git@github.com:alice/active" {
+		t.Errorf("origin uri: got %q", active.Origin.URI)
+	}
+	if active.Push[0] != active.Origin {
+		t.Errorf("push remote: got %+v, want origin entry", active.Push[0])
+	}
+}
+
+func TestMergeEnvProcessWins(t *testing.T) {
+	t.Setenv("MIROIR_TEST_SET", "process")
+	os.Unsetenv("MIROIR_TEST_UNSET")
+
+	env := MergeEnv(map[string]string{
+		"MIROIR_TEST_SET":   "config",
+		"MIROIR_TEST_UNSET": "config",
+	})
+	if slices.Contains(env, "MIROIR_TEST_SET=config") {
+		t.Error("config value should not override process env")
+	}
+	if !slices.Contains(env, "MIROIR_TEST_SET=process") {
+		t.Error("process value missing")
+	}
+	if !slices.Contains(env, "MIROIR_TEST_UNSET=config") {
+		t.Error("unset variable should come from config")
 	}
 }
 

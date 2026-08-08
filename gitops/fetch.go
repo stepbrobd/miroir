@@ -27,24 +27,28 @@ func (Fetch) Run(p Params) error {
 		wg sync.WaitGroup
 	)
 
-	for _, r := range p.Ctx.Push {
+	for j, r := range p.Ctx.Push {
 		wg.Add(1)
-		go func(r workspace.Remote) {
+		go func(j int, r workspace.Remote) {
 			defer wg.Done()
-			j := remoteIndex(p.Ctx, r.Name)
-			ctx := contextOrBackground(p.RunCtx)
 			p.Disp.Remote(p.Slot, j, fmt.Sprintf("%s :: waiting...", r.Name))
 			select {
 			case p.Sem <- struct{}{}:
 				defer func() { <-p.Sem }()
-			case <-ctx.Done():
+			case <-p.RunCtx.Done():
 				return
 			}
 
 			p.Disp.Remote(p.Slot, j, fmt.Sprintf("%s :: fetching...", r.Name))
-			err := runContext(ctx, p.Path, p.Ctx.Env, false,
+			// concurrent fetches into one repo race on commit-graph
+			// and auto-gc lock files
+			args := []string{
+				"-c", "fetch.writeCommitGraph=false",
+				"fetch", "--no-auto-maintenance", r.GitName,
+			}
+			err := run(p.RunCtx, p.Path, p.Ctx.Env, false,
 				func(s string) { p.Disp.Output(p.Slot, j, s) },
-				append([]string{"fetch", r.GitName}, p.Args...)...)
+				append(args, p.Args...)...)
 
 			if err != nil {
 				p.Disp.ErrorRemote(p.Slot, j, fmt.Sprintf("%s :: error", r.Name))
@@ -58,13 +62,13 @@ func (Fetch) Run(p Params) error {
 				err  error
 			}{r.Name, err})
 			mu.Unlock()
-		}(r)
+		}(j, r)
 	}
 	wg.Wait()
 
 	for _, r := range results {
 		if r.err != nil {
-			return fmt.Errorf("fetch from %s failed: %s", r.name, r.err)
+			return fmt.Errorf("fetch from %s failed: %w", r.name, r.err)
 		}
 	}
 	return nil

@@ -5,13 +5,12 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"syscall"
-
-	"ysun.co/miroir/workspace"
 )
 
 func Available() error {
@@ -24,12 +23,8 @@ func Available() error {
 
 // stdout and stderr are merged and delivered line-by-line via onOutput
 // when silent is true, output is suppressed but stderr is captured on failure
-func run(dir string, env []string, silent bool, onOutput func(string), args ...string) error {
-	return runContext(context.Background(), dir, env, silent, onOutput, args...)
-}
-
-func runContext(ctx context.Context, dir string, env []string, silent bool, onOutput func(string), args ...string) error {
-	cmd := exec.CommandContext(contextOrBackground(ctx), "git", args...)
+func run(ctx context.Context, dir string, env []string, silent bool, onOutput func(string), args ...string) error {
+	cmd := exec.CommandContext(ctx, "git", args...)
 	cmd.Dir = dir
 	cmd.Env = env
 
@@ -42,7 +37,7 @@ func runContext(ctx context.Context, dir string, env []string, silent bool, onOu
 				return fmt.Errorf("git %s: %w: %s",
 					strings.Join(args, " "), err, stderr.String())
 			}
-			return err
+			return fmt.Errorf("git %s: %w", strings.Join(args, " "), err)
 		}
 		return nil
 	}
@@ -68,13 +63,18 @@ func runContext(ctx context.Context, dir string, env []string, silent bool, onOu
 			onOutput(line)
 		}
 	}
-	pr.Close()
-	if err := sc.Err(); err != nil {
-		return fmt.Errorf("reading git output: %w", err)
+	scanErr := sc.Err()
+	if scanErr != nil {
+		// drain so the child cannot block on a full pipe before Wait
+		_, _ = io.Copy(io.Discard, pr)
 	}
-
-	if err := cmd.Wait(); err != nil {
-		if exitErr, ok := err.(*exec.ExitError); ok {
+	pr.Close()
+	waitErr := cmd.Wait()
+	if scanErr != nil {
+		return fmt.Errorf("reading git output: %w", scanErr)
+	}
+	if waitErr != nil {
+		if exitErr, ok := waitErr.(*exec.ExitError); ok {
 			if ws, ok := exitErr.Sys().(syscall.WaitStatus); ok && ws.Signaled() {
 				return fmt.Errorf("git %s killed by signal %d",
 					strings.Join(args, " "), ws.Signal())
@@ -82,25 +82,9 @@ func runContext(ctx context.Context, dir string, env []string, silent bool, onOu
 			return fmt.Errorf("git %s exited with code %d",
 				strings.Join(args, " "), exitErr.ExitCode())
 		}
-		return err
+		return waitErr
 	}
 	return nil
-}
-
-func contextOrBackground(ctx context.Context) context.Context {
-	if ctx == nil {
-		return context.Background()
-	}
-	return ctx
-}
-
-func remoteIndex(ctx *workspace.Context, name string) int {
-	for i, r := range ctx.Push {
-		if r.Name == name {
-			return i
-		}
-	}
-	return -1
 }
 
 func repoName(path string) string {
@@ -110,22 +94,13 @@ func repoName(path string) string {
 func ensureRepo(path string) error {
 	info, err := os.Stat(filepath.Join(path, ".git"))
 	if err != nil || !info.IsDir() {
-		return fmt.Errorf("fatal: %s is not a git repository", path)
+		return fmt.Errorf("%s is not a git repository", path)
 	}
 	return nil
 }
 
-// returns true on error to keep dirty checks safe
-func isDirty(dir string, env []string) bool {
-	dirty, err := isDirtyContext(context.Background(), dir, env)
-	if err != nil {
-		return true
-	}
-	return dirty
-}
-
-func isDirtyContext(ctx context.Context, dir string, env []string) (bool, error) {
-	cmd := exec.CommandContext(contextOrBackground(ctx), "git",
+func isDirty(ctx context.Context, dir string, env []string) (bool, error) {
+	cmd := exec.CommandContext(ctx, "git",
 		"status",
 		"--porcelain",
 		"--untracked-files=normal",

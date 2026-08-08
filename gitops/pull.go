@@ -20,7 +20,7 @@ func (Pull) Run(p Params) error {
 	out := func(s string) { p.Disp.Output(p.Slot, j, s) }
 	info := func(s string) { p.Disp.Remote(p.Slot, j, s) }
 
-	dirty, err := isDirtyContext(p.RunCtx, p.Path, p.Ctx.Env)
+	dirty, err := isDirty(p.RunCtx, p.Path, p.Ctx.Env)
 	if err != nil {
 		return err
 	}
@@ -32,13 +32,13 @@ func (Pull) Run(p Params) error {
 
 	if p.Force {
 		info("resetting...")
-		if err := runContext(p.RunCtx, p.Path, p.Ctx.Env, true, nil,
+		if err := run(p.RunCtx, p.Path, p.Ctx.Env, true, nil,
 			"reset", "--hard", "HEAD"); err != nil {
 			return err
 		}
 
 		info("cleaning untracked files...")
-		if err := runContext(p.RunCtx, p.Path, p.Ctx.Env, true, nil,
+		if err := run(p.RunCtx, p.Path, p.Ctx.Env, true, nil,
 			"clean", "-fd"); err != nil {
 			return err
 		}
@@ -46,12 +46,12 @@ func (Pull) Run(p Params) error {
 
 	info("pulling...")
 	pullArgs := append([]string{"pull", "origin", p.Ctx.Branch}, p.Args...)
-	if err := runContext(p.RunCtx, p.Path, p.Ctx.Env, false, out, pullArgs...); err != nil {
+	if err := run(p.RunCtx, p.Path, p.Ctx.Env, false, out, pullArgs...); err != nil {
 		return err
 	}
 
 	info("updating submodules...")
-	err = runContext(p.RunCtx, p.Path, p.Ctx.Env, false, out,
+	err = run(p.RunCtx, p.Path, p.Ctx.Env, false, out,
 		"submodule", "update", "--recursive", "--init")
 	if err != nil {
 		p.Disp.ErrorRemote(p.Slot, j, fmt.Sprintf("error: %s", err))

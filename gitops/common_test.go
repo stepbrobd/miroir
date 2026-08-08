@@ -4,33 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
-
-	"ysun.co/miroir/workspace"
 )
-
-func TestAvailable(t *testing.T) {
-	if err := Available(); err != nil {
-		t.Skipf("git not in PATH: %s", err)
-	}
-}
-
-func TestRemoteIndex(t *testing.T) {
-	ctx := &workspace.Context{
-		Push: []workspace.Remote{
-			{Name: "github", GitName: "origin", URI: "git@github.com:a/b"},
-			{Name: "gitlab", GitName: "gitlab", URI: "git@gitlab.com:a/b"},
-		},
-	}
-	if i := remoteIndex(ctx, "github"); i != 0 {
-		t.Errorf("got %d, want 0", i)
-	}
-	if i := remoteIndex(ctx, "gitlab"); i != 1 {
-		t.Errorf("got %d, want 1", i)
-	}
-	if i := remoteIndex(ctx, "missing"); i != -1 {
-		t.Errorf("got %d, want -1", i)
-	}
-}
 
 func TestRepoName(t *testing.T) {
 	if got := repoName("/home/user/ws/myrepo"); got != "myrepo" {
@@ -50,16 +24,22 @@ func TestIsDirty(t *testing.T) {
 		t.Skip("git not available")
 	}
 	dir := t.TempDir()
-	if err := run(dir, nil, true, nil, "init"); err != nil {
+	git(t, dir, nil, "init")
+	dirty, err := isDirty(t.Context(), dir, nil)
+	if err != nil {
 		t.Fatal(err)
 	}
-	if isDirty(dir, nil) {
+	if dirty {
 		t.Error("fresh repo should not be dirty")
 	}
 	if err := os.WriteFile(filepath.Join(dir, "tmp.txt"), []byte("x"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if !isDirty(dir, nil) {
+	dirty, err = isDirty(t.Context(), dir, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !dirty {
 		t.Error("repo with untracked files should be dirty")
 	}
 }
