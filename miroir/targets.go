@@ -1,4 +1,3 @@
-// package miroir contains high-level orchestration for miroir workflows
 package miroir
 
 import (
@@ -20,33 +19,8 @@ type SelectOptions struct {
 	Cwd  string
 }
 
-// flatNames validates that paths are direct children of home and returns their names
-func FlatNames(paths []string, home string) ([]string, error) {
-	names := make([]string, 0, len(paths))
-	seen := make(map[string]struct{}, len(paths))
-	for _, path := range paths {
-		rel, err := filepath.Rel(home, path)
-		if err != nil {
-			return nil, fmt.Errorf("repo path %q: %w", path, err)
-		}
-		if rel == "." || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
-			return nil, fmt.Errorf("repo path %q is outside workspace %q", path, home)
-		}
-		if strings.Contains(rel, string(filepath.Separator)) {
-			return nil, fmt.Errorf("repo path %q is not flat under workspace %q", path, home)
-		}
-		if _, ok := seen[rel]; ok {
-			return nil, fmt.Errorf("duplicate repo name %q under workspace %q", rel, home)
-		}
-		seen[rel] = struct{}{}
-		names = append(names, rel)
-	}
-	slices.Sort(names)
-	return names, nil
-}
-
-// resolveNames picks repo names from candidates using name all and cwd selection rules
-func ResolveNames(names []string, home string, opts SelectOptions) ([]string, error) {
+// resolveNames picks repo names from candidates using name, all, and cwd selection rules
+func resolveNames(names []string, home string, opts SelectOptions) ([]string, error) {
 	if opts.Name != "" {
 		if !slices.Contains(names, opts.Name) {
 			return nil, fmt.Errorf("repo '%s' not found in config", opts.Name)
@@ -75,16 +49,18 @@ func ResolveNames(names []string, home string, opts SelectOptions) ([]string, er
 }
 
 // selectTargets resolves selected managed repo paths from config and contexts
+// repo names are flat by config validation, so the context path base is the name
 func SelectTargets(cfg *config.Config, ctxs map[string]*workspace.Context, opts SelectOptions) ([]string, error) {
 	home, err := workspace.ExpandHome(cfg.General.Home)
 	if err != nil {
 		return nil, err
 	}
-	names, err := FlatNames(slices.Collect(maps.Keys(ctxs)), home)
-	if err != nil {
-		return nil, err
+	names := make([]string, 0, len(ctxs))
+	for path := range ctxs {
+		names = append(names, filepath.Base(path))
 	}
-	matched, err := ResolveNames(names, home, opts)
+	slices.Sort(names)
+	matched, err := resolveNames(names, home, opts)
 	if err != nil {
 		return nil, err
 	}
@@ -101,21 +77,7 @@ func SyncNames(cfg *config.Config, opts SelectOptions) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	names := slices.Sorted(maps.Keys(cfg.Repo))
-	for _, name := range names {
-		path := filepath.Join(home, name)
-		rel, err := filepath.Rel(home, path)
-		if err != nil {
-			return nil, fmt.Errorf("repo path %q: %w", path, err)
-		}
-		if rel == "." || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
-			return nil, fmt.Errorf("repo path %q is outside workspace %q", path, home)
-		}
-		if strings.Contains(rel, string(filepath.Separator)) {
-			return nil, fmt.Errorf("repo path %q is not flat under workspace %q", path, home)
-		}
-	}
-	return ResolveNames(names, home, opts)
+	return resolveNames(slices.Sorted(maps.Keys(cfg.Repo)), home, opts)
 }
 
 func canonicalPath(path string) string {

@@ -1,4 +1,3 @@
-// package miroir contains high-level orchestration for miroir workflows
 package miroir
 
 import (
@@ -33,15 +32,11 @@ func reportRepoRemoteErrors(errs []repoRemoteErr) error {
 	for _, err := range errs {
 		log.Error("sync failed", "repo", err.repo, "remote", err.remote, "error", err.msg)
 	}
-	return fmt.Errorf("%d repo(s) failed to sync", len(errs))
+	return fmt.Errorf("%d sync failure(s)", len(errs))
 }
 
 func syncRepo(ctx context.Context, cfg *config.Config, disp gitops.Reporter, slot int, sem chan struct{}, name string) []remoteErr {
-	repo, ok := cfg.Repo[name]
-	if !ok {
-		disp.Repo(slot, fmt.Sprintf("%s :: sync :: no repo config", name))
-		repo = config.Repo{Visibility: config.Private}
-	}
+	repo := cfg.Repo[name]
 	disp.Repo(slot, fmt.Sprintf("%s :: sync", name))
 
 	pnames := slices.Sorted(maps.Keys(cfg.Platform))
@@ -55,12 +50,11 @@ func syncRepo(ctx context.Context, cfg *config.Config, disp gitops.Reporter, slo
 		wg.Add(1)
 		go func(j int, pname string, p config.Platform) {
 			defer wg.Done()
-			runCtx := contextOrBackground(ctx)
 			disp.Remote(slot, j, fmt.Sprintf("%s :: waiting...", pname))
 			select {
 			case sem <- struct{}{}:
 				defer func() { <-sem }()
-			case <-runCtx.Done():
+			case <-ctx.Done():
 				return
 			}
 
@@ -87,7 +81,7 @@ func syncRepo(ctx context.Context, cfg *config.Config, disp gitops.Reporter, slo
 				mu.Unlock()
 				return
 			}
-			runCtx, cancel := context.WithTimeout(runCtx, syncTimeout)
+			runCtx, cancel := context.WithTimeout(ctx, syncTimeout)
 			defer cancel()
 			meta := forge.Meta{
 				Name:     name,
@@ -116,8 +110,8 @@ func syncRepo(ctx context.Context, cfg *config.Config, disp gitops.Reporter, slo
 }
 
 // runSync syncs repo metadata to all configured forges for the given names
+// ctx must be non-nil
 func RunSync(ctx context.Context, cfg *config.Config, names []string, disp gitops.Reporter) error {
-	ctx = contextOrBackground(ctx)
 	nrepos := len(names)
 	nremotes := len(cfg.Platform)
 	rc := min(cfg.General.Concurrency.Repo, nrepos)
@@ -131,10 +125,9 @@ func RunSync(ctx context.Context, cfg *config.Config, names []string, disp gitop
 	for i := range rc {
 		pool <- i
 	}
-	sem := make(chan struct{}, mc)
 
 	var (
-		err   []repoRemoteErr
+		errs  []repoRemoteErr
 		errMu sync.Mutex
 		wg    sync.WaitGroup
 	)
@@ -155,9 +148,12 @@ func RunSync(ctx context.Context, cfg *config.Config, names []string, disp gitop
 			if ctx.Err() != nil {
 				return
 			}
+			// concurrency.remote bounds forge calls per repo, so each
+			// repo gets its own semaphore
+			sem := make(chan struct{}, mc)
 			for _, re := range syncRepo(ctx, cfg, disp, slot, sem, name) {
 				errMu.Lock()
-				err = append(err, repoRemoteErr{name, re.remote, re.msg})
+				errs = append(errs, repoRemoteErr{name, re.remote, re.msg})
 				errMu.Unlock()
 			}
 		}(name)
@@ -168,15 +164,8 @@ func RunSync(ctx context.Context, cfg *config.Config, names []string, disp gitop
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	if len(err) > 0 {
-		return reportRepoRemoteErrors(err)
+	if len(errs) > 0 {
+		return reportRepoRemoteErrors(errs)
 	}
 	return nil
-}
-
-func contextOrBackground(ctx context.Context) context.Context {
-	if ctx == nil {
-		return context.Background()
-	}
-	return ctx
 }

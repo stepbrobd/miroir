@@ -5,6 +5,7 @@ import (
 	"errors"
 	"sync"
 	"testing"
+	"time"
 
 	"ysun.co/miroir/config"
 	"ysun.co/miroir/gitops"
@@ -14,7 +15,6 @@ import (
 type fakeReporter struct {
 	mu         sync.Mutex
 	repoMsgs   []string
-	errorMsgs  []string
 	clearSlots []int
 	finished   bool
 }
@@ -26,11 +26,6 @@ func (f *fakeReporter) Repo(_ int, msg string) {
 }
 func (f *fakeReporter) Remote(_, _ int, _ string) {}
 func (f *fakeReporter) Output(_, _ int, _ string) {}
-func (f *fakeReporter) Error(_ int, msg string) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	f.errorMsgs = append(f.errorMsgs, msg)
-}
 func (f *fakeReporter) ErrorRemote(_, _ int, _ string) {}
 func (f *fakeReporter) ErrorOutput(_, _ int, _ string) {}
 func (f *fakeReporter) Clear(slot int) {
@@ -67,7 +62,7 @@ func TestRunGitOpSequentialSuccess(t *testing.T) {
 	reporter := &fakeReporter{}
 	ctxs := map[string]*workspace.Context{"/tmp/a": {}}
 	op := fakeOp{remotes: 0, run: func(p gitops.Params) error { return nil }}
-	err := RunGitOp(op, RunOptions{Targets: []string{"/tmp/a"}, Contexts: ctxs, PlatformCount: 1, RepoConcurrency: 1, Reporter: reporter})
+	err := RunGitOp(op, RunOptions{Context: t.Context(), Targets: []string{"/tmp/a"}, Contexts: ctxs, PlatformCount: 1, RepoConcurrency: 1, Reporter: reporter})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -85,15 +80,12 @@ func TestRunGitOpParallelFailure(t *testing.T) {
 		}
 		return nil
 	}}
-	err := RunGitOp(op, RunOptions{Targets: []string{"/tmp/a", "/tmp/b"}, Contexts: ctxs, PlatformCount: 1, RepoConcurrency: 2, Reporter: reporter})
+	err := RunGitOp(op, RunOptions{Context: t.Context(), Targets: []string{"/tmp/a", "/tmp/b"}, Contexts: ctxs, PlatformCount: 1, RepoConcurrency: 2, Reporter: reporter})
 	if err == nil {
 		t.Fatal("expected error")
 	}
 	if len(reporter.clearSlots) == 0 {
 		t.Fatal("expected slot clears in parallel path")
-	}
-	if len(reporter.errorMsgs) != 0 {
-		t.Fatalf("did not expect repo-level reporter errors got %v", reporter.errorMsgs)
 	}
 }
 
@@ -104,6 +96,7 @@ func TestRunGitOpSequentialFailureDoesNotReportRepoError(t *testing.T) {
 		return errors.New("boom")
 	}}
 	err := RunGitOp(op, RunOptions{
+		Context:         t.Context(),
 		Targets:         []string{"/tmp/a"},
 		Contexts:        ctxs,
 		PlatformCount:   1,
@@ -112,9 +105,6 @@ func TestRunGitOpSequentialFailureDoesNotReportRepoError(t *testing.T) {
 	})
 	if err == nil {
 		t.Fatal("expected error")
-	}
-	if len(reporter.errorMsgs) != 0 {
-		t.Fatalf("did not expect repo-level reporter errors got %v", reporter.errorMsgs)
 	}
 	if !reporter.finished {
 		t.Fatal("expected reporter finish")
@@ -158,9 +148,6 @@ func TestRunGitOpSequentialCancelStopsLaterTargets(t *testing.T) {
 	if len(seen) != 1 || seen[0] != "/tmp/a" {
 		t.Fatalf("expected only first repo to run got %v", seen)
 	}
-	if len(reporter.errorMsgs) != 0 {
-		t.Fatalf("did not expect repo-level reporter errors got %v", reporter.errorMsgs)
-	}
 	if !reporter.finished {
 		t.Fatal("expected reporter finish")
 	}
@@ -198,11 +185,48 @@ func TestRunGitOpParallelCancelDoesNotReportRepoErrors(t *testing.T) {
 	if len(started) == 0 {
 		t.Fatal("expected at least one repo to start")
 	}
-	if len(reporter.errorMsgs) != 0 {
-		t.Fatalf("did not expect repo-level reporter errors got %v", reporter.errorMsgs)
-	}
 	if !reporter.finished {
 		t.Fatal("expected reporter finish")
+	}
+}
+
+func TestRunGitOpRemoteLimitIsPerRepo(t *testing.T) {
+	reporter := &fakeReporter{}
+	ctxs := map[string]*workspace.Context{"/tmp/a": {}, "/tmp/b": {}}
+	ready := make(chan struct{}, 2)
+	release := make(chan struct{})
+	op := fakeOp{remotes: 1, run: func(p gitops.Params) error {
+		p.Sem <- struct{}{}
+		defer func() { <-p.Sem }()
+		ready <- struct{}{}
+		<-release
+		return nil
+	}}
+
+	done := make(chan error, 1)
+	go func() {
+		done <- RunGitOp(op, RunOptions{
+			Context:           t.Context(),
+			Targets:           []string{"/tmp/a", "/tmp/b"},
+			Contexts:          ctxs,
+			PlatformCount:     1,
+			RepoConcurrency:   2,
+			RemoteConcurrency: 1,
+			Reporter:          reporter,
+		})
+	}()
+
+	// with a shared semaphore the second repo would block here forever
+	for range 2 {
+		select {
+		case <-ready:
+		case <-time.After(5 * time.Second):
+			t.Fatal("remote semaphore is not per-repo")
+		}
+	}
+	close(release)
+	if err := <-done; err != nil {
+		t.Fatal(err)
 	}
 }
 
@@ -240,9 +264,6 @@ func TestRunSyncCancelStopsBeforeRepoWork(t *testing.T) {
 	}
 	if len(reporter.repoMsgs) != 0 {
 		t.Fatalf("expected sync to stop before repo work got %v", reporter.repoMsgs)
-	}
-	if len(reporter.errorMsgs) != 0 {
-		t.Fatalf("did not expect repo-level reporter errors got %v", reporter.errorMsgs)
 	}
 	if !reporter.finished {
 		t.Fatal("expected reporter finish")

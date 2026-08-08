@@ -9,13 +9,6 @@ import (
 	"ysun.co/miroir/workspace"
 )
 
-func TestFlatNamesRejectsNestedPath(t *testing.T) {
-	_, err := FlatNames([]string{"/tmp/ws/group/alpha"}, "/tmp/ws")
-	if err == nil {
-		t.Fatal("expected nested path error")
-	}
-}
-
 func TestSelectTargetsByName(t *testing.T) {
 	cfg := &config.Config{General: config.General{Home: "/tmp/ws"}}
 	ctxs := map[string]*workspace.Context{
@@ -31,16 +24,30 @@ func TestSelectTargetsByName(t *testing.T) {
 	}
 }
 
-func TestSyncNamesRejectsNestedConfigName(t *testing.T) {
-	cfg := &config.Config{
-		General: config.General{Home: "/tmp/ws"},
-		Repo: map[string]config.Repo{
-			"group/alpha": {},
-		},
+func TestSelectTargetsAllSorted(t *testing.T) {
+	cfg := &config.Config{General: config.General{Home: "/tmp/ws"}}
+	ctxs := map[string]*workspace.Context{
+		filepath.Join("/tmp/ws", "beta"):  {},
+		filepath.Join("/tmp/ws", "alpha"): {},
 	}
-	_, err := SyncNames(cfg, SelectOptions{All: true})
-	if err == nil {
-		t.Fatal("expected nested config name error")
+	got, err := SelectTargets(cfg, ctxs, SelectOptions{All: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 2 || got[0] != "/tmp/ws/alpha" || got[1] != "/tmp/ws/beta" {
+		t.Fatalf("got %v, want sorted [alpha beta] paths", got)
+	}
+}
+
+func TestResolveNamesUnknownName(t *testing.T) {
+	if _, err := resolveNames([]string{"alpha"}, "/tmp/ws", SelectOptions{Name: "beta"}); err == nil {
+		t.Fatal("expected unknown repo error")
+	}
+}
+
+func TestResolveNamesUnmanagedCwd(t *testing.T) {
+	if _, err := resolveNames([]string{"alpha"}, "/tmp/ws", SelectOptions{Cwd: t.TempDir()}); err == nil {
+		t.Fatal("expected unmanaged cwd error")
 	}
 }
 
@@ -55,7 +62,7 @@ func TestResolveNamesMatchesSymlinkedWorkspaceCwd(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	got, err := ResolveNames([]string{"alpha"}, filepath.Join(link, "ws"), SelectOptions{
+	got, err := resolveNames([]string{"alpha"}, filepath.Join(link, "ws"), SelectOptions{
 		Cwd: filepath.Join(real, "ws", "alpha"),
 	})
 	if err != nil {
@@ -63,5 +70,22 @@ func TestResolveNamesMatchesSymlinkedWorkspaceCwd(t *testing.T) {
 	}
 	if len(got) != 1 || got[0] != "alpha" {
 		t.Fatalf("got %v want [alpha]", got)
+	}
+}
+
+func TestSyncNamesIncludesArchived(t *testing.T) {
+	cfg := &config.Config{
+		General: config.General{Home: "/tmp/ws"},
+		Repo: map[string]config.Repo{
+			"live": {},
+			"old":  {Archived: true},
+		},
+	}
+	got, err := SyncNames(cfg, SelectOptions{All: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 2 || got[0] != "live" || got[1] != "old" {
+		t.Fatalf("got %v, want [live old]", got)
 	}
 }

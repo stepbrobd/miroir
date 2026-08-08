@@ -15,6 +15,7 @@ import (
 )
 
 // runOptions configures a batch git operation run
+// context must be non-nil
 type RunOptions struct {
 	Context           context.Context
 	Targets           []string
@@ -42,9 +43,6 @@ func reportRepoErrors(errs []repoErr) error {
 // runGitOp runs a git operation across the selected target repositories
 func RunGitOp(op gitops.Op, opts RunOptions) error {
 	ctx := opts.Context
-	if ctx == nil {
-		ctx = context.Background()
-	}
 	nr := op.Remotes(opts.PlatformCount)
 
 	var errs []repoErr
@@ -87,7 +85,6 @@ func RunGitOp(op gitops.Op, opts RunOptions) error {
 		for i := range rc {
 			pool <- i
 		}
-		sem := make(chan struct{}, mc)
 
 		var wg sync.WaitGroup
 		for _, target := range opts.Targets {
@@ -106,6 +103,9 @@ func RunGitOp(op gitops.Op, opts RunOptions) error {
 				if ctx.Err() != nil {
 					return
 				}
+				// concurrency.remote bounds remote ops per repo, so
+				// each repo gets its own semaphore
+				sem := make(chan struct{}, mc)
 				err := op.Run(gitops.Params{
 					RunCtx: ctx, Path: target, Ctx: opts.Contexts[target], Disp: opts.Reporter,
 					Slot: slot, Sem: sem, Force: opts.Force, Args: opts.Args,
