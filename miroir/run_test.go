@@ -24,8 +24,8 @@ func (f *fakeReporter) Repo(_ int, msg string) {
 	defer f.mu.Unlock()
 	f.repoMsgs = append(f.repoMsgs, msg)
 }
-func (f *fakeReporter) Remote(_, _ int, _ string) {}
-func (f *fakeReporter) Output(_, _ int, _ string) {}
+func (f *fakeReporter) Remote(_, _ int, _ string)      {}
+func (f *fakeReporter) Output(_, _ int, _ string)      {}
 func (f *fakeReporter) ErrorRemote(_, _ int, _ string) {}
 func (f *fakeReporter) ErrorOutput(_, _ int, _ string) {}
 func (f *fakeReporter) Clear(slot int) {

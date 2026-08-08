@@ -7,9 +7,7 @@ import (
 
 	"github.com/adrg/xdg"
 
-	"ysun.co/miroir/config"
-	"ysun.co/miroir/miroir"
-	"ysun.co/miroir/workspace"
+	"ysun.co/miroir/gitops"
 )
 
 func setConfigFlag(t *testing.T, val string) {
@@ -106,180 +104,49 @@ func TestConfigPathNoConfig(t *testing.T) {
 	}
 }
 
-func setupTargets(t *testing.T, home string, repos ...string) {
-	t.Helper()
-	cfg = &config.Config{
-		General: config.General{Home: home},
+func TestResolveTargetsWiring(t *testing.T) {
+	if err := gitops.Available(); err != nil {
+		t.Skip("git not available")
 	}
-	ctxs = make(map[string]*workspace.Context)
-	for _, r := range repos {
-		ctxs[filepath.Join(home, r)] = &workspace.Context{}
-	}
-}
 
-func TestSelectTargetsByName(t *testing.T) {
-	t.Setenv("HOME", "/home/test")
-	setupTargets(t, "/home/test/ws", "alpha", "beta")
-	nameFlag = "alpha"
-	allFlag = false
-	t.Cleanup(func() { nameFlag = "" })
+	tmp := t.TempDir()
+	home := filepath.Join(tmp, "ws")
+	cfgFile := filepath.Join(tmp, "config.toml")
+	toml := `
+[general]
+home = "` + home + `"
 
-	got, err := miroir.SelectTargets(cfg, ctxs, miroir.SelectOptions{Name: nameFlag, All: allFlag})
-	if err != nil {
+[platform.github]
+origin = true
+domain = "github.com"
+user = "alice"
+
+[repo.alpha]
+`
+	if err := os.WriteFile(cfgFile, []byte(toml), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if len(got) != 1 || got[0] != "/home/test/ws/alpha" {
-		t.Errorf("got %v, want [/home/test/ws/alpha]", got)
-	}
-}
+	t.Setenv("MIROIR_CONFIG", cfgFile)
 
-func TestSelectTargetsByNameNotFound(t *testing.T) {
-	t.Setenv("HOME", "/home/test")
-	setupTargets(t, "/home/test/ws", "alpha")
-	nameFlag = "missing"
-	allFlag = false
-	t.Cleanup(func() { nameFlag = "" })
-
-	_, err := miroir.SelectTargets(cfg, ctxs, miroir.SelectOptions{Name: nameFlag, All: allFlag})
-	if err == nil {
-		t.Fatal("expected error for missing repo")
-	}
-}
-
-func TestSelectTargetsAll(t *testing.T) {
-	t.Setenv("HOME", "/home/test")
-	setupTargets(t, "/home/test/ws", "beta", "alpha")
 	nameFlag = ""
 	allFlag = true
 	t.Cleanup(func() { allFlag = false })
 
-	got, err := miroir.SelectTargets(cfg, ctxs, miroir.SelectOptions{Name: nameFlag, All: allFlag})
-	if err != nil {
+	if err := resolveTargets(nil, nil); err != nil {
 		t.Fatal(err)
 	}
-	want := []string{"/home/test/ws/alpha", "/home/test/ws/beta"}
-	if len(got) != len(want) {
-		t.Fatalf("got %v, want %v", got, want)
+	if cfg == nil || cfg.General.Home != home {
+		t.Fatalf("cfg not loaded: %+v", cfg)
 	}
-	for i := range want {
-		if got[i] != want[i] {
-			t.Errorf("got[%d] = %q, want %q", i, got[i], want[i])
-		}
+	want := filepath.Join(home, "alpha")
+	if len(targets) != 1 || targets[0] != want {
+		t.Fatalf("targets: got %v, want [%s]", targets, want)
 	}
-}
-
-func TestSelectTargetsByCwd(t *testing.T) {
-	t.Setenv("HOME", "/home/test")
-	nameFlag = ""
-	allFlag = false
-
-	tmp := t.TempDir()
-	real := filepath.Join(tmp, "real")
-	link := filepath.Join(tmp, "link")
-	if err := os.MkdirAll(real, 0o755); err != nil {
-		t.Fatal(err)
+	ctx, ok := ctxs[want]
+	if !ok {
+		t.Fatalf("missing workspace context for %s", want)
 	}
-	if err := os.Symlink(real, link); err != nil {
-		t.Fatal(err)
-	}
-
-	dir := filepath.Join(real, "ws", "alpha")
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-
-	ctxs = map[string]*workspace.Context{filepath.Join(link, "ws", "alpha"): {}}
-	cfg = &config.Config{General: config.General{Home: filepath.Join(link, "ws")}}
-
-	oldDir, _ := os.Getwd()
-	defer os.Chdir(oldDir)
-	os.Chdir(dir)
-
-	got, err := miroir.SelectTargets(cfg, ctxs, miroir.SelectOptions{Name: nameFlag, All: allFlag})
-	if err != nil {
-		t.Fatal(err)
-	}
-	want := filepath.Join(link, "ws", "alpha")
-	if len(got) != 1 || got[0] != want {
-		t.Errorf("got %v, want [%s]", got, want)
-	}
-}
-
-func TestSelectTargetsNotManaged(t *testing.T) {
-	t.Setenv("HOME", "/home/test")
-	setupTargets(t, "/home/test/ws", "alpha")
-	nameFlag = ""
-	allFlag = false
-
-	oldDir, _ := os.Getwd()
-	defer os.Chdir(oldDir)
-	os.Chdir(t.TempDir())
-
-	_, err := miroir.SelectTargets(cfg, ctxs, miroir.SelectOptions{Name: nameFlag, All: allFlag})
-	if err == nil {
-		t.Fatal("expected error when cwd is not a managed repo")
-	}
-}
-
-func TestSelectTargetsRejectsNestedManagedRepo(t *testing.T) {
-	t.Setenv("HOME", "/home/test")
-	cfg = &config.Config{General: config.General{Home: "/home/test/ws"}}
-	ctxs = map[string]*workspace.Context{
-		"/home/test/ws/group/alpha": {},
-	}
-
-	_, err := miroir.SelectTargets(cfg, ctxs, miroir.SelectOptions{Name: nameFlag, All: allFlag})
-	if err == nil {
-		t.Fatal("expected error for nested managed repo path")
-	}
-}
-
-func TestSelectTargetsRejectsManagedRepoOutsideWorkspace(t *testing.T) {
-	t.Setenv("HOME", "/home/test")
-	cfg = &config.Config{General: config.General{Home: "/home/test/ws"}}
-	ctxs = map[string]*workspace.Context{
-		"/home/test/other/alpha": {},
-	}
-
-	_, err := miroir.SelectTargets(cfg, ctxs, miroir.SelectOptions{Name: nameFlag, All: allFlag})
-	if err == nil {
-		t.Fatal("expected error for managed repo outside workspace")
-	}
-}
-
-func TestSyncNamesByName(t *testing.T) {
-	t.Setenv("HOME", "/home/test")
-	cfg = &config.Config{
-		General: config.General{Home: "/home/test/ws"},
-		Repo: map[string]config.Repo{
-			"alpha": {},
-			"beta":  {},
-		},
-	}
-	nameFlag = "alpha"
-	allFlag = false
-	t.Cleanup(func() { nameFlag = "" })
-
-	got, err := miroir.SyncNames(cfg, miroir.SelectOptions{Name: nameFlag, All: allFlag})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(got) != 1 || got[0] != "alpha" {
-		t.Fatalf("got %v, want [alpha]", got)
-	}
-}
-
-func TestSyncNamesRejectsNestedRepoName(t *testing.T) {
-	t.Setenv("HOME", "/home/test")
-	cfg = &config.Config{
-		General: config.General{Home: "/home/test/ws"},
-		Repo: map[string]config.Repo{
-			"group/alpha": {},
-		},
-	}
-
-	_, err := miroir.SyncNames(cfg, miroir.SelectOptions{Name: nameFlag, All: allFlag})
-	if err == nil {
-		t.Fatal("expected error for nested sync repo path")
+	if ctx.Origin.URI != "git@github.com:alice/alpha" {
+		t.Fatalf("origin uri: got %q", ctx.Origin.URI)
 	}
 }

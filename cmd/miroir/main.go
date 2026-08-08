@@ -11,7 +11,6 @@ import (
 	"github.com/adrg/xdg"
 	"github.com/charmbracelet/log"
 	"github.com/spf13/cobra"
-	"github.com/spf13/viper"
 
 	"ysun.co/miroir/config"
 	"ysun.co/miroir/gitops"
@@ -43,28 +42,34 @@ var root = &cobra.Command{
 
 func init() {
 	root.Version = version
+	root.PersistentFlags().StringP("config", "c", "", "Config file path")
+}
 
-	f := root.PersistentFlags()
-	f.StringP("config", "c", "", "Config file path")
+func targetFlags(cmd *cobra.Command) {
+	f := cmd.Flags()
 	f.StringVarP(&nameFlag, "name", "n", "", "Target repo by name")
 	f.BoolVarP(&allFlag, "all", "a", false, "Target all repos")
-	f.BoolVarP(&forceFlag, "force", "f", false, "Force operation")
+}
+
+func forceFlagOn(cmd *cobra.Command) {
+	cmd.Flags().BoolVarP(&forceFlag, "force", "f", false, "Force operation")
+}
+
+func ttyFlags(cmd *cobra.Command) {
+	f := cmd.Flags()
 	f.BoolVar(&ttyFlag, "tty", false, "Force TTY output")
 	f.BoolVar(&noTTYFlag, "no-tty", false, "Force plain output")
-	root.MarkFlagsMutuallyExclusive("tty", "no-tty")
+	cmd.MarkFlagsMutuallyExclusive("tty", "no-tty")
 }
 
 // --config beats MIROIR_CONFIG which beats XDG config dirs
 func configPath() (string, error) {
-	v := viper.New()
-	v.SetEnvPrefix("MIROIR")
-	v.BindEnv("config")
-	v.BindPFlag("config", root.PersistentFlags().Lookup("config"))
-
-	if p := v.GetString("config"); p != "" {
+	if p := root.PersistentFlags().Lookup("config").Value.String(); p != "" {
 		return p, nil
 	}
-
+	if p := os.Getenv("MIROIR_CONFIG"); p != "" {
+		return p, nil
+	}
 	return xdg.SearchConfigFile(filepath.Join("miroir", "config.toml"))
 }
 

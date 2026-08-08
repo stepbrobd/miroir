@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -17,7 +16,7 @@ import (
 )
 
 func gitCmd(use, short string, op gitops.Op) *cobra.Command {
-	return &cobra.Command{
+	cmd := &cobra.Command{
 		Use:               use,
 		Short:             short,
 		PersistentPreRunE: resolveTargets,
@@ -25,6 +24,10 @@ func gitCmd(use, short string, op gitops.Op) *cobra.Command {
 			return runOn(cmd.Context(), op, forceFlag, args)
 		},
 	}
+	targetFlags(cmd)
+	forceFlagOn(cmd)
+	ttyFlags(cmd)
+	return cmd
 }
 
 func init() {
@@ -37,6 +40,8 @@ func init() {
 			return runOn(cmd.Context(), gitops.Exec{}, forceFlag, args)
 		},
 	}
+	targetFlags(execCmd)
+	ttyFlags(execCmd)
 
 	syncCmd := &cobra.Command{
 		Use:               "sync",
@@ -46,6 +51,8 @@ func init() {
 			return runSync(cmd.Context())
 		},
 	}
+	targetFlags(syncCmd)
+	ttyFlags(syncCmd)
 
 	sweepCmd := &cobra.Command{
 		Use:               "sweep",
@@ -55,6 +62,7 @@ func init() {
 			return runSweep()
 		},
 	}
+	forceFlagOn(sweepCmd)
 
 	indexCmd := &cobra.Command{
 		Use:               "index",
@@ -132,23 +140,17 @@ func runSweep() error {
 	var errs []string
 	for _, name := range removals {
 		path := filepath.Join(home, name)
-		clean := filepath.Clean(path)
-		if !strings.HasPrefix(clean, home+string(filepath.Separator)) {
-			errs = append(errs, fmt.Sprintf("%s: path escapes workspace root", name))
-			continue
-		}
-		if err := os.RemoveAll(clean); err != nil {
+		if err := os.RemoveAll(path); err != nil {
 			errs = append(errs, fmt.Sprintf("%s: %s", name, err))
 			continue
 		}
-		fmt.Printf("  removed %s\n", clean)
+		fmt.Printf("  removed %s\n", path)
 	}
 
 	if len(errs) > 0 {
 		fmt.Fprintln(os.Stderr)
-		style := display.DefaultTheme.Error
 		for _, e := range errs {
-			fmt.Fprintln(os.Stderr, style.Render(fmt.Sprintf("error: %s", e)))
+			fmt.Fprintf(os.Stderr, "error: %s\n", e)
 		}
 		return fmt.Errorf("%d removal(s) failed", len(errs))
 	}
