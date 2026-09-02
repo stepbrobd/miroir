@@ -266,7 +266,9 @@ Starts a long-running daemon that:
 2. Discovers repos from `[index].include` paths (one level deep, no git ops)
 3. Indexes each managed repo using zoekt's trigram indexer
 4. Removes daemon-managed repo directories and shards for repos removed from
-   config or marked archived
+   config or marked archived, a shard counts as daemon-managed when its source
+   sits under `general.home` or its name starts with the origin's
+   `<domain>/<user>/`
 5. Removes stale shards for disappeared `index.include` repos
 6. Serves the zoekt search API and web UI over HTTP
 

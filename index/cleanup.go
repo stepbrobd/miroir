@@ -26,6 +26,14 @@ func activeManagedShardNames(c *Cfg) map[string]string {
 	return names
 }
 
+func activeIndexNames(c *Cfg) map[string]struct{} {
+	names := make(map[string]struct{}, len(c.Repos))
+	for _, r := range c.Repos {
+		names[r.IndexName] = struct{}{}
+	}
+	return names
+}
+
 // tempRepoDir names bootstrap temp dirs .<repo dir>.tmp-<rand>
 func orphanTempPrefixes(c *Cfg) []string {
 	prefixes := make([]string, 0, len(c.Repos))
@@ -125,6 +133,7 @@ func cleanupShards(c *Cfg, discovered []string, includeReady bool) error {
 	}
 
 	activeByPath := activeManagedShardNames(c)
+	activeNames := activeIndexNames(c)
 	activeIncludes := make(map[string]struct{}, len(discovered))
 	for _, path := range discovered {
 		activeIncludes[filepath.Clean(path)] = struct{}{}
@@ -150,10 +159,16 @@ func cleanupShards(c *Cfg, discovered []string, includeReady bool) error {
 				}
 				continue
 			}
-			if !includeReady || !isIncludedSource(source, c.Include) {
+			if isIncludedSource(source, c.Include) {
+				if _, ok := activeIncludes[source]; includeReady && !ok {
+					remove = true
+					break
+				}
 				continue
 			}
-			if _, ok := activeIncludes[source]; !ok {
+			// an older home setting leaves shards whose source is gone
+			// but whose name still says they are ours
+			if _, ok := activeNames[repo.Name]; strings.HasPrefix(repo.Name, c.Namespace) && !ok {
 				remove = true
 				break
 			}

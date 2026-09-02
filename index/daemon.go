@@ -31,8 +31,11 @@ type Cfg struct {
 	Env      CmdEnv
 
 	// managed repos derived from miroir config
-	Home  string
-	Repos []Repo
+	// every managed index name starts with Namespace, so a shard named
+	// under it is daemon owned even when its recorded source path moved
+	Home      string
+	Namespace string
+	Repos     []Repo
 }
 
 // indexRepo is a seam swapped out by tests
@@ -88,14 +91,15 @@ func CfgFrom(c *config.Config) (*Cfg, error) {
 	}
 
 	return &Cfg{
-		Listen:   c.Index.Listen,
-		Database: filepath.Clean(db),
-		Interval: time.Duration(c.Index.Interval) * time.Second,
-		Bare:     c.Index.Bare,
-		Include:  include,
-		Env:      CmdEnv(workspace.MergeEnv(c.General.Env)),
-		Home:     filepath.Clean(home),
-		Repos:    repos,
+		Listen:    c.Index.Listen,
+		Database:  filepath.Clean(db),
+		Interval:  time.Duration(c.Index.Interval) * time.Second,
+		Bare:      c.Index.Bare,
+		Include:   include,
+		Env:       CmdEnv(workspace.MergeEnv(c.General.Env)),
+		Home:      filepath.Clean(home),
+		Namespace: indexNamespace(origin),
+		Repos:     repos,
 	}, nil
 }
 
@@ -122,8 +126,12 @@ func repoWebMetadata(p config.Platform, repo string) (string, string) {
 	return fmt.Sprintf("https://%s/%s", p.Domain, path.Join(p.User, repo)), webURLType
 }
 
+func indexNamespace(p config.Platform) string {
+	return path.Join(p.Domain, p.User) + "/"
+}
+
 func repoIndexName(p config.Platform, repo string) string {
-	return path.Join(p.Domain, p.User, repo)
+	return indexNamespace(p) + repo
 }
 
 // Run starts the daemon and blocks until ctx is cancelled

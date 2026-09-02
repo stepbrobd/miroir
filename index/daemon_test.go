@@ -970,6 +970,46 @@ func TestCleanupManagedShardsForRepoRemovesLegacyNames(t *testing.T) {
 	}
 }
 
+func TestCycleRemovesNamespacedShardsWithMovedSource(t *testing.T) {
+	skipNoGit(t)
+	tmp := t.TempDir()
+	src := seedRepoWithFile(t, tmp, "main.txt", "main branch only\n")
+
+	home := filepath.Join(tmp, "repos")
+	db := filepath.Join(tmp, "shards")
+	if err := os.MkdirAll(home, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(db, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	// both shards point at a source outside home, only the namespaced
+	// name of a repo no longer in config is daemon owned
+	if err := IndexRepo(src, db, "github.com/alice/gone"); err != nil {
+		t.Fatal(err)
+	}
+	if err := IndexRepo(src, db, "other.org/bob/kept"); err != nil {
+		t.Fatal(err)
+	}
+
+	c := &Cfg{
+		Listen:    ":0",
+		Database:  db,
+		Interval:  time.Hour,
+		Bare:      true,
+		Home:      home,
+		Namespace: "github.com/alice/",
+		Repos:     []Repo{{Name: "seed", IndexName: "github.com/alice/seed", URI: src, Branch: "main"}},
+	}
+
+	cycle(t.Context(), c)
+	want := []string{"github.com/alice/seed", "other.org/bob/kept"}
+	if got := shardRepoNames(t, db); !slices.Equal(got, want) {
+		t.Fatalf("got shard repo names %v want %v", got, want)
+	}
+}
+
 func TestCycleManagedRepoUsesFullNameAndGithubLinks(t *testing.T) {
 	skipNoGit(t)
 	tmp := t.TempDir()
@@ -1053,6 +1093,9 @@ func TestCfgFromBasic(t *testing.T) {
 	}
 	if got.Repos[0].Name != "foo" {
 		t.Errorf("repo name: got %q", got.Repos[0].Name)
+	}
+	if got.Namespace != "github.com/alice/" {
+		t.Errorf("namespace: got %q", got.Namespace)
 	}
 	if got.Repos[0].IndexName != "github.com/alice/foo" {
 		t.Errorf("repo index name: got %q", got.Repos[0].IndexName)
