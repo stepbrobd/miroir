@@ -2,6 +2,7 @@ package index
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"maps"
 	"net/http"
@@ -164,7 +165,7 @@ func Run(ctx context.Context, c *Cfg) error {
 	errCh := make(chan error, 1)
 	go func() {
 		log.Info("serving", "addr", c.Listen)
-		if err := httpSrv.ListenAndServe(); err != http.ErrServerClosed {
+		if err := httpSrv.ListenAndServe(); !errors.Is(err, http.ErrServerClosed) {
 			errCh <- err
 		}
 	}()

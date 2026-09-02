@@ -366,11 +366,13 @@ func installBlockingGitWrapper(t *testing.T, tmp, match, verb, mark string) {
 	script := fmt.Sprintf(`#!/bin/sh
 case "$(basename "$PWD")" in
   %s)
-    if [ "$1" = "%s" ]; then
-      : > "$MIROIR_FETCH_MARK"
-      trap 'exit 0' TERM INT
-      while :; do sleep 1; done
-    fi
+    case " $* " in
+      *" %s "*)
+        : > "$MIROIR_FETCH_MARK"
+        trap 'exit 0' TERM INT
+        while :; do sleep 1; done
+        ;;
+    esac
     ;;
 esac
 exec "%s" "$@"

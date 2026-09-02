@@ -48,7 +48,7 @@ func orphanTempDir(c *Cfg, entry string, prefixes []string) bool {
 			return true
 		}
 	}
-	marker, ok, err := repoConfig(context.Background(), filepath.Join(c.Home, entry), c.Env, "miroir.managed")
+	marker, ok, err := repoConfig(context.Background(), filepath.Join(c.Home, entry), c.Env, managedKey)
 	return err == nil && ok && marker == "true"
 }
 
@@ -105,7 +105,7 @@ func managedRepoName(c *Cfg, entry string) (string, string, bool) {
 	}
 	// cleanup config reads are millisecond-scale local git calls and run
 	// to completion by design, so they are not tied to the cycle context
-	marker, ok, err := repoConfig(context.Background(), path, c.Env, "miroir.managed")
+	marker, ok, err := repoConfig(context.Background(), path, c.Env, managedKey)
 	if err != nil || !ok || marker != "true" {
 		return "", "", false
 	}

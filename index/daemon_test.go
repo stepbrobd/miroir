@@ -144,13 +144,16 @@ func bareHeadRef(t *testing.T, dir string, env []string) string {
 	return strings.TrimSpace(out)
 }
 
-func branchNames(t *testing.T, dir string, env []string, prefix string, strip int) []string {
+func refNames(t *testing.T, dir string, env []string, prefix string) []string {
 	t.Helper()
-	names, err := listRefs(t.Context(), dir, CmdEnv(env), prefix, strip)
+	refs, err := listRefs(t.Context(), dir, CmdEnv(env), prefix)
 	if err != nil {
 		t.Fatal(err)
 	}
-	return names
+	for i, ref := range refs {
+		refs[i] = strings.TrimPrefix(ref, prefix+"/")
+	}
+	return refs
 }
 
 func TestCycleIntegration(t *testing.T) {
@@ -676,7 +679,7 @@ func TestCycleBareReconcilesHeadsAndIndexesConfiguredBranch(t *testing.T) {
 	if got := bareHeadRef(t, barePath, env); got != "refs/heads/feature" {
 		t.Fatalf("got HEAD %q want refs/heads/feature", got)
 	}
-	if got := branchNames(t, barePath, env, "refs/heads", 2); !slices.Equal(got, []string{"feature", "main"}) {
+	if got := refNames(t, barePath, env, "refs/heads"); !slices.Equal(got, []string{"feature", "main"}) {
 		t.Fatalf("got local branches %v want [feature main]", got)
 	}
 	if got := shardRepoNames(t, db); !slices.Equal(got, []string{"seed"}) {
@@ -718,15 +721,49 @@ func TestCycleBarePrunesDeletedOriginBranchesAndUnexpectedLocalHeads(t *testing.
 
 	cycle(t.Context(), c)
 	barePath := filepath.Join(home, "seed.git")
-	hash, err := resolveRef(t.Context(), barePath, CmdEnv(env), "refs/heads/main")
-	if err != nil {
-		t.Fatal(err)
-	}
-	gitRun(t, barePath, env, "update-ref", "refs/heads/junk", hash)
+	gitRun(t, barePath, env, "update-ref", "refs/heads/junk", "refs/heads/main")
 	gitRun(t, src, env, "branch", "-D", "feature")
 
 	cycle(t.Context(), c)
-	if got := branchNames(t, barePath, env, "refs/heads", 2); !slices.Equal(got, []string{"main"}) {
+	if got := refNames(t, barePath, env, "refs/heads"); !slices.Equal(got, []string{"main"}) {
+		t.Fatalf("got local branches %v want [main]", got)
+	}
+}
+
+func TestCycleBareDropsTrackingRefsOfOlderDaemon(t *testing.T) {
+	skipNoGit(t)
+	tmp := t.TempDir()
+	env := gitEnv()
+	src := seedRepoWithFile(t, tmp, "main.txt", "main branch only\n")
+
+	home := filepath.Join(tmp, "repos")
+	db := filepath.Join(tmp, "shards")
+	if err := os.MkdirAll(home, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(db, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	c := &Cfg{
+		Listen:   ":0",
+		Database: db,
+		Interval: time.Hour,
+		Bare:     true,
+		Home:     home,
+		Repos:    []Repo{{Name: "seed", IndexName: "seed", URI: src, Branch: "main"}},
+	}
+
+	cycle(t.Context(), c)
+	barePath := filepath.Join(home, "seed.git")
+	gitRun(t, barePath, env, "config", "remote.origin.fetch", "+refs/heads/*:refs/remotes/origin/*")
+	gitRun(t, barePath, env, "update-ref", "refs/remotes/origin/main", "refs/heads/main")
+
+	cycle(t.Context(), c)
+	if got := refNames(t, barePath, env, "refs/remotes"); len(got) != 0 {
+		t.Fatalf("got tracking refs %v want none", got)
+	}
+	if got := refNames(t, barePath, env, "refs/heads"); !slices.Equal(got, []string{"main"}) {
 		t.Fatalf("got local branches %v want [main]", got)
 	}
 }
