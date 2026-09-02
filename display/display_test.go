@@ -1,40 +1,27 @@
 package display
 
 import (
+	"bytes"
 	"io"
-	"os"
 	"strings"
 	"testing"
 
 	"github.com/charmbracelet/x/ansi"
 )
 
-func captureStdout(t *testing.T, f func()) string {
-	t.Helper()
-	old := os.Stdout
-	r, w, err := os.Pipe()
-	if err != nil {
-		t.Fatal(err)
-	}
-	os.Stdout = w
-	f()
-	w.Close()
-	os.Stdout = old
-	b, err := io.ReadAll(r)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return string(b)
+// quiet makes a tty display that renders into nowhere
+func quiet(repos, remotes int) *Display {
+	v := true
+	d := New(repos, remotes, DefaultTheme, &v)
+	d.out = io.Discard
+	return d
 }
 
 func TestGridIndexingSecondSlot(t *testing.T) {
-	v := true
-	d := New(2, 2, DefaultTheme, &v)
-	_ = captureStdout(t, func() {
-		d.Repo(1, "repo1")
-		d.Remote(1, 1, "remote11")
-		d.Output(1, 1, "out11")
-	})
+	d := quiet(2, 2)
+	d.Repo(1, "repo1")
+	d.Remote(1, 1, "remote11")
+	d.Output(1, 1, "out11")
 	stride := 1 + 2*2
 	if d.lines[stride].text != "repo1" {
 		t.Errorf("repo line: got %+v", d.lines[stride])
@@ -48,12 +35,9 @@ func TestGridIndexingSecondSlot(t *testing.T) {
 }
 
 func TestGridErrorLinesRender(t *testing.T) {
-	v := true
-	d := New(1, 1, DefaultTheme, &v)
-	_ = captureStdout(t, func() {
-		d.ErrorRemote(0, 0, "origin :: error")
-		d.ErrorOutput(0, 0, "boom")
-	})
+	d := quiet(1, 1)
+	d.ErrorRemote(0, 0, "origin :: error")
+	d.ErrorOutput(0, 0, "boom")
 	if d.lines[1].kind != lineErrorRemote || d.lines[1].text != "origin :: error" {
 		t.Errorf("error remote line: got %+v", d.lines[1])
 	}
@@ -63,10 +47,22 @@ func TestGridErrorLinesRender(t *testing.T) {
 }
 
 func TestFinishWithoutDrawEmitsNothing(t *testing.T) {
-	v := true
-	d := New(1, 1, DefaultTheme, &v)
-	if out := captureStdout(t, d.Finish); out != "" {
-		t.Fatalf("expected no output, got %q", out)
+	d := quiet(1, 1)
+	var buf bytes.Buffer
+	d.out = &buf
+	d.Finish()
+	if buf.Len() != 0 {
+		t.Fatalf("expected no output, got %q", buf.String())
+	}
+}
+
+func TestRedrawRepaintsEveryLine(t *testing.T) {
+	d := quiet(1, 1)
+	var buf bytes.Buffer
+	d.out = &buf
+	d.Repo(0, "repo")
+	if got := strings.Count(buf.String(), "\x1b[2K"); got != 3 {
+		t.Fatalf("expected 3 cleared rows on the first draw got %d in %q", got, buf.String())
 	}
 }
 
@@ -79,8 +75,7 @@ func TestNewHonorsTTYOverride(t *testing.T) {
 }
 
 func TestClearOnTTY(t *testing.T) {
-	v := true
-	d := New(1, 1, DefaultTheme, &v)
+	d := quiet(1, 1)
 	d.lines[0] = line{text: "repo", kind: lineRepo}
 	d.lines[1] = line{text: "remote", kind: lineRemote}
 	d.Clear(0)
@@ -90,16 +85,14 @@ func TestClearOnTTY(t *testing.T) {
 }
 
 func TestTTYReservesOutputLinesWithPlaceholder(t *testing.T) {
-	v := true
-	d := New(1, 2, DefaultTheme, &v)
+	d := quiet(1, 2)
 	if d.lines[2].text != outputPlaceholder || d.lines[4].text != outputPlaceholder {
 		t.Fatalf("expected reserved placeholders, got %+v", d.lines)
 	}
 }
 
 func TestTTYDoneRemoteKeepsPlaceholderOutput(t *testing.T) {
-	v := true
-	d := New(1, 1, DefaultTheme, &v)
+	d := quiet(1, 1)
 	d.Remote(0, 0, "origin :: done")
 	if d.lines[2].text != outputPlaceholder {
 		t.Fatalf("done remote should keep placeholder got %+v", d.lines[2])
@@ -107,8 +100,7 @@ func TestTTYDoneRemoteKeepsPlaceholderOutput(t *testing.T) {
 }
 
 func TestTTYDoneRemotePreservesActualOutput(t *testing.T) {
-	v := true
-	d := New(1, 1, DefaultTheme, &v)
+	d := quiet(1, 1)
 	d.Output(0, 0, "Everything up-to-date")
 	d.Remote(0, 0, "origin :: done")
 	if d.lines[2].text != "Everything up-to-date" {
@@ -117,8 +109,7 @@ func TestTTYDoneRemotePreservesActualOutput(t *testing.T) {
 }
 
 func TestTTYOutputTrimsWhitespace(t *testing.T) {
-	v := true
-	d := New(1, 1, DefaultTheme, &v)
+	d := quiet(1, 1)
 	d.Output(0, 0, "   Everything up-to-date   ")
 	if d.lines[2].text != "Everything up-to-date" {
 		t.Fatalf("expected trimmed output got %+v", d.lines[2])
@@ -126,8 +117,7 @@ func TestTTYOutputTrimsWhitespace(t *testing.T) {
 }
 
 func TestTTYRenderLineTruncatesToOneRow(t *testing.T) {
-	v := true
-	d := New(1, 1, DefaultTheme, &v)
+	d := quiet(1, 1)
 	d.width = 24
 	got := d.renderLine(line{
 		text: "* [new branch]                z3-solver            -> origin/z3-solver",

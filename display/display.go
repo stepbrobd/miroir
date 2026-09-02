@@ -3,6 +3,7 @@ package display
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"strings"
 	"sync"
@@ -35,6 +36,7 @@ const outputPlaceholder = "[no output]"
 // using direct ANSI escape codes or structured log in non-TTY mode
 type Display struct {
 	tty    bool
+	out    io.Writer
 	mu     sync.Mutex
 	lines  []line
 	width  int
@@ -52,7 +54,7 @@ func New(repos, remotes int, th Theme, ttyOverride *bool) *Display {
 	if ttyOverride != nil {
 		tty = *ttyOverride
 	}
-	d := &Display{tty: tty, theme: th}
+	d := &Display{tty: tty, out: os.Stdout, theme: th}
 
 	if tty {
 		w, _, _ := term.GetSize(int(os.Stdout.Fd()))
@@ -67,7 +69,7 @@ func New(repos, remotes int, th Theme, ttyOverride *bool) *Display {
 			d.resetSlot(slot)
 		}
 	} else {
-		d.log = log.NewWithOptions(os.Stdout, log.Options{
+		d.log = log.NewWithOptions(d.out, log.Options{
 			ReportTimestamp: false,
 			ReportCaller:    false,
 		})
@@ -125,7 +127,7 @@ func (d *Display) reserve(lines int) {
 		buf.WriteByte('\n')
 	}
 	fmt.Fprintf(&buf, "\x1b[%dA", lines)
-	os.Stdout.WriteString(buf.String())
+	io.WriteString(d.out, buf.String())
 	d.ready = true
 }
 
@@ -143,7 +145,7 @@ func (d *Display) redraw() {
 		buf.WriteString(d.renderLine(l))
 		buf.WriteByte('\n')
 	}
-	os.Stdout.WriteString(buf.String())
+	io.WriteString(d.out, buf.String())
 	d.drawn = len(d.lines)
 }
 
