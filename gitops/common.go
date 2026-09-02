@@ -21,26 +21,27 @@ func Available() error {
 	return nil
 }
 
-// stdout and stderr are merged and delivered line-by-line via onOutput
-// when silent is true, output is suppressed but stderr is captured on failure
-func run(ctx context.Context, dir string, env []string, silent bool, onOutput func(string), args ...string) error {
+// runQuiet runs git without output and folds stderr into the error
+func runQuiet(ctx context.Context, dir string, env []string, args ...string) error {
 	cmd := exec.CommandContext(ctx, "git", args...)
 	cmd.Dir = dir
 	cmd.Env = env
-
-	if silent {
-		var stderr bytes.Buffer
-		cmd.Stdout = nil
-		cmd.Stderr = &stderr
-		if err := cmd.Run(); err != nil {
-			if stderr.Len() > 0 {
-				return fmt.Errorf("git %s: %w: %s",
-					strings.Join(args, " "), err, stderr.String())
-			}
-			return fmt.Errorf("git %s: %w", strings.Join(args, " "), err)
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		if stderr.Len() > 0 {
+			return fmt.Errorf("git %s: %w: %s", strings.Join(args, " "), err, stderr.String())
 		}
-		return nil
+		return fmt.Errorf("git %s: %w", strings.Join(args, " "), err)
 	}
+	return nil
+}
+
+// run runs git and delivers merged stdout and stderr line by line to onOutput
+func run(ctx context.Context, dir string, env []string, onOutput func(string), args ...string) error {
+	cmd := exec.CommandContext(ctx, "git", args...)
+	cmd.Dir = dir
+	cmd.Env = env
 
 	pr, pw, err := os.Pipe()
 	if err != nil {
@@ -58,8 +59,7 @@ func run(ctx context.Context, dir string, env []string, silent bool, onOutput fu
 
 	sc := bufio.NewScanner(pr)
 	for sc.Scan() {
-		line := sc.Text()
-		if len(line) > 0 && onOutput != nil {
+		if line := sc.Text(); len(line) > 0 {
 			onOutput(line)
 		}
 	}

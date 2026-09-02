@@ -32,13 +32,13 @@ func (Pull) Run(p Params) error {
 
 	if p.Force {
 		info("resetting...")
-		if err := run(p.RunCtx, p.Path, p.Ctx.Env, true, nil,
+		if err := runQuiet(p.RunCtx, p.Path, p.Ctx.Env,
 			"reset", "--hard", "HEAD"); err != nil {
 			return err
 		}
 
 		info("cleaning untracked files...")
-		if err := run(p.RunCtx, p.Path, p.Ctx.Env, true, nil,
+		if err := runQuiet(p.RunCtx, p.Path, p.Ctx.Env,
 			"clean", "-fd"); err != nil {
 			return err
 		}
@@ -46,12 +46,12 @@ func (Pull) Run(p Params) error {
 
 	info("pulling...")
 	pullArgs := append([]string{"pull", "origin", p.Ctx.Branch}, p.Args...)
-	if err := run(p.RunCtx, p.Path, p.Ctx.Env, false, out, pullArgs...); err != nil {
+	if err := run(p.RunCtx, p.Path, p.Ctx.Env, out, pullArgs...); err != nil {
 		return err
 	}
 
 	info("updating submodules...")
-	err = run(p.RunCtx, p.Path, p.Ctx.Env, false, out,
+	err = run(p.RunCtx, p.Path, p.Ctx.Env, out,
 		"submodule", "update", "--recursive", "--init")
 	if err != nil {
 		p.Disp.ErrorRemote(p.Slot, j, fmt.Sprintf("error: %s", err))

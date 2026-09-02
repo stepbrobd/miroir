@@ -20,7 +20,7 @@ func gitEnv() []string {
 
 func git(t *testing.T, dir string, env []string, args ...string) {
 	t.Helper()
-	if err := run(t.Context(), dir, env, true, nil, args...); err != nil {
+	if err := runQuiet(t.Context(), dir, env, args...); err != nil {
 		t.Fatal(err)
 	}
 }
