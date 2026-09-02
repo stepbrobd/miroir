@@ -11,17 +11,6 @@ import (
 	"ysun.co/miroir/gitops"
 )
 
-func setConfigFlag(t *testing.T, val string) {
-	t.Helper()
-	f := root.PersistentFlags().Lookup("config")
-	f.Value.Set(val)
-	f.Changed = val != ""
-	t.Cleanup(func() {
-		f.Value.Set("")
-		f.Changed = false
-	})
-}
-
 func writeConfigFile(t *testing.T, dir string) string {
 	t.Helper()
 	p := filepath.Join(dir, "miroir", "config.toml")
@@ -35,9 +24,8 @@ func writeConfigFile(t *testing.T, dir string) string {
 }
 
 func TestConfigPathFlag(t *testing.T) {
-	setConfigFlag(t, "/explicit/path.toml")
-
-	got, err := configPath()
+	a := &app{config: "/explicit/path.toml"}
+	got, err := a.configPath()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -49,7 +37,8 @@ func TestConfigPathFlag(t *testing.T) {
 func TestConfigPathEnv(t *testing.T) {
 	t.Setenv("MIROIR_CONFIG", "/env/path.toml")
 
-	got, err := configPath()
+	a := &app{}
+	got, err := a.configPath()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -59,10 +48,10 @@ func TestConfigPathEnv(t *testing.T) {
 }
 
 func TestConfigPathFlagOverEnv(t *testing.T) {
-	setConfigFlag(t, "/flag.toml")
 	t.Setenv("MIROIR_CONFIG", "/env.toml")
 
-	got, err := configPath()
+	a := &app{config: "/flag.toml"}
+	got, err := a.configPath()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -81,7 +70,8 @@ func TestConfigPathXDG(t *testing.T) {
 	xdg.Reload()
 	t.Cleanup(func() { xdg.Reload() })
 
-	got, err := configPath()
+	a := &app{}
+	got, err := a.configPath()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -99,8 +89,8 @@ func TestConfigPathNoConfig(t *testing.T) {
 	xdg.Reload()
 	t.Cleanup(func() { xdg.Reload() })
 
-	_, err := configPath()
-	if err == nil {
+	a := &app{}
+	if _, err := a.configPath(); err == nil {
 		t.Fatal("expected error when no config file exists")
 	}
 }
@@ -112,16 +102,15 @@ func TestRunSweep(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	cfg = &config.Config{
+	a := &app{cfg: &config.Config{
 		General: config.General{Home: home},
 		Repo: map[string]config.Repo{
 			"live": {},
 			"old":  {Archived: true},
 		},
-	}
+	}}
 
-	forceFlag = false
-	if err := runSweep(); err != nil {
+	if err := a.runSweep(); err != nil {
 		t.Fatal(err)
 	}
 	for _, d := range []string{"live", "old", "untracked"} {
@@ -130,9 +119,8 @@ func TestRunSweep(t *testing.T) {
 		}
 	}
 
-	forceFlag = true
-	t.Cleanup(func() { forceFlag = false })
-	if err := runSweep(); err != nil {
+	a.force = true
+	if err := a.runSweep(); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(filepath.Join(home, "live")); err != nil {
@@ -169,21 +157,38 @@ user = "alice"
 	}
 	t.Setenv("MIROIR_CONFIG", cfgFile)
 
-	nameFlag = ""
-	allFlag = true
-	t.Cleanup(func() { allFlag = false })
-
-	if err := resolveTargets(nil, nil); err != nil {
+	a := &app{all: true}
+	if err := a.resolveTargets(nil, nil); err != nil {
 		t.Fatal(err)
 	}
-	if cfg == nil || cfg.General.Home != home {
-		t.Fatalf("cfg not loaded: %+v", cfg)
+	if a.cfg == nil || a.cfg.General.Home != home {
+		t.Fatalf("cfg not loaded: %+v", a.cfg)
 	}
 	want := filepath.Join(home, "alpha")
-	if len(targets) != 1 || targets[0].Path != want {
-		t.Fatalf("targets: got %v, want [%s]", targets, want)
+	if len(a.targets) != 1 || a.targets[0].Path != want {
+		t.Fatalf("targets: got %v, want [%s]", a.targets, want)
 	}
-	if targets[0].Origin.URI != "git@github.com:alice/alpha" {
-		t.Fatalf("origin uri: got %q", targets[0].Origin.URI)
+	if a.targets[0].Origin.URI != "git@github.com:alice/alpha" {
+		t.Fatalf("origin uri: got %q", a.targets[0].Origin.URI)
+	}
+}
+
+func TestRootCommandsAndFlags(t *testing.T) {
+	root := newRoot()
+	for _, name := range []string{"init", "fetch", "pull", "push", "exec", "sync", "sweep", "index", "completion"} {
+		cmd, _, err := root.Find([]string{name})
+		if err != nil || cmd.Name() != name {
+			t.Fatalf("missing command %s: %v", name, err)
+		}
+	}
+	push, _, _ := root.Find([]string{"push"})
+	for _, flag := range []string{"name", "all", "force", "tty", "no-tty"} {
+		if push.Flags().Lookup(flag) == nil {
+			t.Errorf("push lacks --%s", flag)
+		}
+	}
+	sweep, _, _ := root.Find([]string{"sweep"})
+	if sweep.Flags().Lookup("all") != nil {
+		t.Error("sweep must not take --all")
 	}
 }

@@ -15,92 +15,90 @@ import (
 	"ysun.co/miroir/workspace"
 )
 
-func gitCmd(use, short string, op gitops.Op) *cobra.Command {
+func (a *app) gitCmd(use, short string, op gitops.Op) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:               use,
 		Short:             short,
-		PersistentPreRunE: resolveTargets,
+		PersistentPreRunE: a.resolveTargets,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runOn(cmd.Context(), op, forceFlag, args)
+			return a.runOn(cmd.Context(), op, args)
 		},
 	}
-	targetFlags(cmd)
-	forceFlagOn(cmd)
-	ttyFlags(cmd)
+	a.targetFlags(cmd)
+	a.forceFlag(cmd)
+	a.ttyFlags(cmd)
 	return cmd
 }
 
-func init() {
-	execCmd := &cobra.Command{
+func (a *app) execCmd() *cobra.Command {
+	cmd := &cobra.Command{
 		Use:               "exec [flags] -- <command> [args...]",
 		Short:             "Execute command in repo(s)",
-		PersistentPreRunE: resolveTargets,
+		PersistentPreRunE: a.resolveTargets,
 		Args:              cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runOn(cmd.Context(), gitops.Exec{}, forceFlag, args)
+			return a.runOn(cmd.Context(), gitops.Exec{}, args)
 		},
 	}
-	targetFlags(execCmd)
-	ttyFlags(execCmd)
+	a.targetFlags(cmd)
+	a.ttyFlags(cmd)
+	return cmd
+}
 
-	syncCmd := &cobra.Command{
+func (a *app) syncCmd() *cobra.Command {
+	cmd := &cobra.Command{
 		Use:               "sync",
 		Short:             "Sync metadata to all forges",
-		PersistentPreRunE: loadConfig,
+		PersistentPreRunE: a.loadConfig,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runSync(cmd.Context())
+			return a.runSync(cmd.Context())
 		},
 	}
-	targetFlags(syncCmd)
-	ttyFlags(syncCmd)
+	a.targetFlags(cmd)
+	a.ttyFlags(cmd)
+	return cmd
+}
 
-	sweepCmd := &cobra.Command{
+func (a *app) sweepCmd() *cobra.Command {
+	cmd := &cobra.Command{
 		Use:               "sweep",
 		Short:             "Remove archived and untracked repos from workspace",
-		PersistentPreRunE: loadConfig,
+		PersistentPreRunE: a.loadConfig,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runSweep()
+			return a.runSweep()
 		},
 	}
-	forceFlagOn(sweepCmd)
+	a.forceFlag(cmd)
+	return cmd
+}
 
-	indexCmd := &cobra.Command{
+func (a *app) indexCmd() *cobra.Command {
+	return &cobra.Command{
 		Use:               "index",
 		Short:             "Start index daemon (fetch, index, serve)",
-		PersistentPreRunE: loadConfig,
+		PersistentPreRunE: a.loadConfig,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runIndex(cmd.Context())
+			return a.runIndex(cmd.Context())
 		},
 	}
-
-	root.AddCommand(
-		gitCmd("init", "Initialize repo(s)", gitops.Init{}),
-		gitCmd("fetch", "Fetch from all remotes", gitops.Fetch{}),
-		gitCmd("pull", "Pull from origin", gitops.Pull{}),
-		gitCmd("push", "Push to all remotes", gitops.Push{}),
-		execCmd,
-		syncCmd,
-		sweepCmd,
-		indexCmd,
-	)
 }
 
-func runOn(ctx context.Context, op gitops.Op, force bool, extra []string) error {
-	disp := display.New(min(cfg.General.Concurrency.Repo, max(1, len(targets))), op.Remotes(len(cfg.Platform)), display.DefaultTheme, ttyOverride())
-	return miroir.RunGitOp(op, miroir.SelectRunOptions(ctx, cfg, targets, disp, force, extra))
+func (a *app) runOn(ctx context.Context, op gitops.Op, extra []string) error {
+	disp := display.New(min(a.cfg.General.Concurrency.Repo, max(1, len(a.targets))), op.Remotes(len(a.cfg.Platform)), display.DefaultTheme, a.ttyOverride())
+	return miroir.RunGitOp(op, miroir.SelectRunOptions(ctx, a.cfg, a.targets, disp, a.force, extra))
 }
 
-func runSync(ctx context.Context) error {
-	names, err := miroir.SyncNames(cfg, miroir.SelectOptions{Name: nameFlag, All: allFlag})
+func (a *app) runSync(ctx context.Context) error {
+	names, err := miroir.SyncNames(a.cfg, miroir.SelectOptions{Name: a.name, All: a.all})
 	if err != nil {
 		return err
 	}
-	disp := display.New(min(cfg.General.Concurrency.Repo, max(1, len(names))), len(cfg.Platform), display.DefaultTheme, ttyOverride())
-	return miroir.RunSync(ctx, cfg, names, disp)
+	disp := display.New(min(a.cfg.General.Concurrency.Repo, max(1, len(names))), len(a.cfg.Platform), display.DefaultTheme, a.ttyOverride())
+	return miroir.RunSync(ctx, a.cfg, names, disp)
 }
 
-func runSweep() error {
-	home, err := workspace.ExpandHome(cfg.General.Home)
+func (a *app) runSweep() error {
+	home, err := workspace.ExpandHome(a.cfg.General.Home)
 	if err != nil {
 		return err
 	}
@@ -117,7 +115,7 @@ func runSweep() error {
 			continue
 		}
 		name := e.Name()
-		repo, inConfig := cfg.Repo[name]
+		repo, inConfig := a.cfg.Repo[name]
 		if inConfig && !repo.Archived {
 			continue
 		}
@@ -129,7 +127,7 @@ func runSweep() error {
 		return nil
 	}
 
-	if !forceFlag {
+	if !a.force {
 		fmt.Println("directories to remove (pass -f to actually delete):")
 		for _, name := range removals {
 			fmt.Printf("  %s\n", filepath.Join(home, name))
@@ -157,8 +155,8 @@ func runSweep() error {
 	return nil
 }
 
-func runIndex(ctx context.Context) error {
-	c, err := index.CfgFrom(cfg)
+func (a *app) runIndex(ctx context.Context) error {
+	c, err := index.CfgFrom(a.cfg)
 	if err != nil {
 		return err
 	}

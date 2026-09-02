@@ -7,8 +7,8 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func init() {
-	root.AddCommand(&cobra.Command{
+func completionCmd(root *cobra.Command) *cobra.Command {
+	return &cobra.Command{
 		Use:       "completion [bash|zsh|fish]",
 		Short:     "Generate shell completion script",
 		Args:      cobra.ExactArgs(1),
@@ -25,5 +25,5 @@ func init() {
 				return fmt.Errorf("unsupported shell: %s", args[0])
 			}
 		},
-	})
+	}
 }

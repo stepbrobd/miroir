@@ -20,51 +20,64 @@ import (
 
 var version = "dev"
 
-var (
-	nameFlag  string
-	allFlag   bool
-	forceFlag bool
-	ttyFlag   bool
-	noTTYFlag bool
+// app holds the flag values and what the pre-run hooks resolve from them
+type app struct {
+	config string
+	name   string
+	all    bool
+	force  bool
+	tty    bool
+	noTTY  bool
 
-	// set by resolveTargets before subcommand RunE
-	targets []*workspace.Context
 	cfg     *config.Config
-)
-
-var root = &cobra.Command{
-	Use:           "miroir",
-	Short:         "Repo manager wannabe?",
-	SilenceUsage:  true,
-	SilenceErrors: true,
+	targets []*workspace.Context
 }
 
-func init() {
-	root.Version = version
-	root.PersistentFlags().StringP("config", "c", "", "Config file path")
+func newRoot() *cobra.Command {
+	a := &app{}
+	root := &cobra.Command{
+		Use:           "miroir",
+		Short:         "Repo manager wannabe?",
+		Version:       version,
+		SilenceUsage:  true,
+		SilenceErrors: true,
+	}
+	root.PersistentFlags().StringVarP(&a.config, "config", "c", "", "Config file path")
+	root.AddCommand(
+		a.gitCmd("init", "Initialize repo(s)", gitops.Init{}),
+		a.gitCmd("fetch", "Fetch from all remotes", gitops.Fetch{}),
+		a.gitCmd("pull", "Pull from origin", gitops.Pull{}),
+		a.gitCmd("push", "Push to all remotes", gitops.Push{}),
+		a.execCmd(),
+		a.syncCmd(),
+		a.sweepCmd(),
+		a.indexCmd(),
+		completionCmd(root),
+	)
+	return root
 }
 
-func targetFlags(cmd *cobra.Command) {
+func (a *app) targetFlags(cmd *cobra.Command) {
 	f := cmd.Flags()
-	f.StringVarP(&nameFlag, "name", "n", "", "Target repo by name")
-	f.BoolVarP(&allFlag, "all", "a", false, "Target all repos")
+	f.StringVarP(&a.name, "name", "n", "", "Target repo by name")
+	f.BoolVarP(&a.all, "all", "a", false, "Target all repos")
 }
 
-func forceFlagOn(cmd *cobra.Command) {
-	cmd.Flags().BoolVarP(&forceFlag, "force", "f", false, "Force operation")
+func (a *app) forceFlag(cmd *cobra.Command) {
+	cmd.Flags().BoolVarP(&a.force, "force", "f", false, "Force operation")
 }
 
-func ttyFlags(cmd *cobra.Command) {
+func (a *app) ttyFlags(cmd *cobra.Command) {
 	f := cmd.Flags()
-	f.BoolVar(&ttyFlag, "tty", false, "Force TTY output")
-	f.BoolVar(&noTTYFlag, "no-tty", false, "Force plain output")
+	f.BoolVar(&a.tty, "tty", false, "Force TTY output")
+	f.BoolVar(&a.noTTY, "no-tty", false, "Force plain output")
 	cmd.MarkFlagsMutuallyExclusive("tty", "no-tty")
 }
 
 // --config beats MIROIR_CONFIG which beats XDG config dirs
-func configPath() (string, error) {
-	if p := root.PersistentFlags().Lookup("config").Value.String(); p != "" {
-		return p, nil
+func (a *app) configPath() (string, error) {
+	if a.config != "" {
+		return a.config, nil
 	}
 	if p := os.Getenv("MIROIR_CONFIG"); p != "" {
 		return p, nil
@@ -72,36 +85,36 @@ func configPath() (string, error) {
 	return xdg.SearchConfigFile(filepath.Join("miroir", "config.toml"))
 }
 
-func loadConfig(cmd *cobra.Command, args []string) error {
-	path, err := configPath()
+func (a *app) loadConfig(*cobra.Command, []string) error {
+	path, err := a.configPath()
 	if err != nil {
 		return err
 	}
-	cfg, err = config.Load(path)
+	a.cfg, err = config.Load(path)
 	return err
 }
 
-func resolveTargets(cmd *cobra.Command, args []string) error {
+func (a *app) resolveTargets(cmd *cobra.Command, args []string) error {
 	if err := gitops.Available(); err != nil {
 		return err
 	}
-	if err := loadConfig(cmd, args); err != nil {
+	if err := a.loadConfig(cmd, args); err != nil {
 		return err
 	}
-	ctxs, err := workspace.MakeAll(cfg)
+	ctxs, err := workspace.MakeAll(a.cfg)
 	if err != nil {
 		return err
 	}
-	targets, err = miroir.SelectTargets(cfg, ctxs, miroir.SelectOptions{Name: nameFlag, All: allFlag})
+	a.targets, err = miroir.SelectTargets(a.cfg, ctxs, miroir.SelectOptions{Name: a.name, All: a.all})
 	return err
 }
 
-func ttyOverride() *bool {
-	if ttyFlag {
+func (a *app) ttyOverride() *bool {
+	if a.tty {
 		v := true
 		return &v
 	}
-	if noTTYFlag {
+	if a.noTTY {
 		v := false
 		return &v
 	}
@@ -122,6 +135,7 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
+	root := newRoot()
 	normalizeHelpText(root)
 	root.InitDefaultVersionFlag()
 	if flag := root.Flags().Lookup("version"); flag != nil {
