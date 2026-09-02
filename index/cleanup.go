@@ -154,7 +154,11 @@ func removeShards(database string, stale func(repos []*zoekt.Repository) bool) e
 				return err
 			}
 		}
-		log.Info("removed stale shard", "path", shard)
+		names := make([]string, 0, len(repos))
+		for _, repo := range repos {
+			names = append(names, repo.Name)
+		}
+		log.Info("removed stale shard", "path", shard, "repos", names)
 	}
 	return nil
 }
