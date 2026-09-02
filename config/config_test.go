@@ -456,3 +456,18 @@ func TestUnmarshalTextRejectsUnknownValues(t *testing.T) {
 		}
 	}
 }
+
+func TestValidateRejectsEmptyListenBranchAndInclude(t *testing.T) {
+	origin := "[platform.a]\norigin = true\ndomain = \"a.com\"\n"
+	tests := []string{
+		origin + "\n[general]\nbranch = \"\"\n",
+		origin + "\n[index]\nlisten = \" \"\n",
+		origin + "\n[index]\ninclude = [\"/srv/repos\", \"\"]\n",
+		origin + "\n[repo.x]\nbranch = \"\"\n",
+	}
+	for _, s := range tests {
+		if _, err := Parse(s); err == nil {
+			t.Errorf("expected validation error for %q", s)
+		}
+	}
+}

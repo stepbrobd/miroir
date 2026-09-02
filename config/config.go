@@ -158,8 +158,20 @@ func validate(cfg *Config) error {
 	if strings.TrimSpace(cfg.General.Home) == "" {
 		return fmt.Errorf("general.home must not be empty")
 	}
+	if strings.TrimSpace(cfg.General.Branch) == "" {
+		return fmt.Errorf("general.branch must not be empty")
+	}
+	// an empty address makes net/http listen on port 80
+	if strings.TrimSpace(cfg.Index.Listen) == "" {
+		return fmt.Errorf("index.listen must not be empty")
+	}
 	if strings.TrimSpace(cfg.Index.Database) == "" {
 		return fmt.Errorf("index.database must not be empty")
+	}
+	for i, inc := range cfg.Index.Include {
+		if strings.TrimSpace(inc) == "" {
+			return fmt.Errorf("index.include[%d] must not be empty", i)
+		}
 	}
 	if cfg.General.Concurrency.Repo <= 0 {
 		return fmt.Errorf("general.concurrency.repo must be positive, got %d", cfg.General.Concurrency.Repo)
@@ -190,9 +202,12 @@ func validate(cfg *Config) error {
 	}
 	// repo names become directory names and forge repo names, so they
 	// must be single flat path components
-	for name := range cfg.Repo {
+	for name, repo := range cfg.Repo {
 		if name == "." || name == ".." || name != filepath.Base(name) {
 			return fmt.Errorf("repo name %q must be a bare directory name", name)
+		}
+		if repo.Branch != nil && strings.TrimSpace(*repo.Branch) == "" {
+			return fmt.Errorf("repo %q: branch must not be empty", name)
 		}
 	}
 	return nil
