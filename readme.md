@@ -237,7 +237,8 @@ miroir sync -a
 
 Creates repos that don't exist, updates description/visibility on existing ones,
 and archives repos marked `archived = true` on forges that support archiving.
-Each forge API call has a 30-second timeout.
+Each repo's sync against one forge, its read, its write, and one retry when the
+repo appeared in between, has a 30-second timeout.
 
 **sweep** removes archived and untracked repos from the workspace
 
