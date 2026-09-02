@@ -74,6 +74,20 @@ func TestNewHonorsTTYOverride(t *testing.T) {
 	}
 }
 
+func TestPlainModeWritesThroughOut(t *testing.T) {
+	v := false
+	d := New(1, 1, DefaultTheme, &v)
+	var buf bytes.Buffer
+	d.out = &buf
+	d.Repo(0, "seed :: fetch")
+	d.ErrorOutput(0, 0, "boom")
+	for _, want := range []string{"seed :: fetch", "boom"} {
+		if !strings.Contains(buf.String(), want) {
+			t.Fatalf("expected %q in plain output got %q", want, buf.String())
+		}
+	}
+}
+
 func TestClearOnTTY(t *testing.T) {
 	d := quiet(1, 1)
 	d.lines[0] = line{text: "repo", kind: lineRepo}

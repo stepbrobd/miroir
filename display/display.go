@@ -32,6 +32,15 @@ type line struct {
 
 const outputPlaceholder = "[no output]"
 
+// logWriter follows d.out so a swapped writer also catches the plain logger
+type logWriter struct {
+	d *Display
+}
+
+func (w logWriter) Write(p []byte) (int, error) {
+	return w.d.out.Write(p)
+}
+
 // Display renders a live-updating progress grid in TTY mode
 // using direct ANSI escape codes or structured log in non-TTY mode
 type Display struct {
@@ -69,7 +78,7 @@ func New(repos, remotes int, th Theme, ttyOverride *bool) *Display {
 			d.resetSlot(slot)
 		}
 	} else {
-		d.log = log.NewWithOptions(d.out, log.Options{
+		d.log = log.NewWithOptions(logWriter{d}, log.Options{
 			ReportTimestamp: false,
 			ReportCaller:    false,
 		})
