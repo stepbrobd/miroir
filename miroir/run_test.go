@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"ysun.co/miroir/config"
+	"ysun.co/miroir/forge"
 	"ysun.co/miroir/gitops"
 	"ysun.co/miroir/workspace"
 )
@@ -310,5 +311,38 @@ func TestRunSyncCancelStopsBeforeRepoWork(t *testing.T) {
 	}
 	if !reporter.finished {
 		t.Fatal("expected reporter finish")
+	}
+}
+
+// flakyForge reports the repo as existing the first n times
+type flakyForge struct {
+	exists int
+	calls  int
+}
+
+func (f *flakyForge) Sync(_ context.Context, _ string, _ forge.Meta) error {
+	f.calls++
+	if f.calls <= f.exists {
+		return forge.ErrExists
+	}
+	return nil
+}
+
+func TestSyncMetaRetriesOnceWhenRepoAppears(t *testing.T) {
+	f := &flakyForge{exists: 1}
+	if err := syncMeta(t.Context(), platform{forge: f}, forge.Meta{Name: "x"}); err != nil {
+		t.Fatal(err)
+	}
+	if f.calls != 2 {
+		t.Fatalf("calls: got %d want 2", f.calls)
+	}
+
+	f = &flakyForge{exists: 2}
+	err := syncMeta(t.Context(), platform{forge: f}, forge.Meta{Name: "x"})
+	if !errors.Is(err, forge.ErrExists) {
+		t.Fatalf("got %v want ErrExists after the retry", err)
+	}
+	if f.calls != 2 {
+		t.Fatalf("calls: got %d want 2", f.calls)
 	}
 }

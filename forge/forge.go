@@ -17,6 +17,8 @@ type Meta struct {
 
 // Forge is the per-platform reconciliation entry point
 // Sync is create-or-update with archive handling where supported
+// it returns ErrExists when the repo appeared between its read and its
+// create, and the caller runs it once more to read the repo back
 type Forge interface {
 	Sync(ctx context.Context, user string, m Meta) error
 }

@@ -2,6 +2,7 @@ package miroir
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"maps"
 	"slices"
@@ -72,10 +73,16 @@ func resolvePlatforms(cfg *config.Config) ([]platform, error) {
 	return platforms, nil
 }
 
+// syncMeta gives the forge a second pass when the repo appeared between
+// its read and its create, that pass reads it back as an update
 func syncMeta(ctx context.Context, p platform, meta forge.Meta) error {
 	runCtx, cancel := context.WithTimeout(ctx, syncTimeout)
 	defer cancel()
-	return p.forge.Sync(runCtx, p.user, meta)
+	err := p.forge.Sync(runCtx, p.user, meta)
+	if errors.Is(err, forge.ErrExists) {
+		return p.forge.Sync(runCtx, p.user, meta)
+	}
+	return err
 }
 
 func syncRepo(ctx context.Context, cfg *config.Config, platforms []platform, disp gitops.Reporter, slot int, sem chan struct{}, name string) []remoteErr {
