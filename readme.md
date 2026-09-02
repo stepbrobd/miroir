@@ -146,18 +146,18 @@ characters are replaced with `_`, so `gitlab-main` maps to
 
 ### Index
 
-| Field      | Default                       | Description                                                                                                                                       |
-| ---------- | ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `listen`   | `:6070`                       | HTTP listen address                                                                                                                               |
-| `database` | `$XDG_DATA_HOME/miroir/index` | Directory for zoekt index shards                                                                                                                  |
-| `interval` | `300`                         | Seconds between fetch+index cycles, must be at least `1`                                                                                          |
-| `bare`     | `true`                        | `true` keeps a daemon-owned bare repo synced from origin and indexes `HEAD` `false` keeps a normal clone and indexes the local checked out `HEAD` |
-| `include`  | `[]`                          | Extra directories to discover repos (1 level)                                                                                                     |
+| Field      | Default                       | Description                                                                                                                                    |
+| ---------- | ----------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| `listen`   | `:6070`                       | HTTP listen address                                                                                                                            |
+| `database` | `$XDG_DATA_HOME/miroir/index` | Directory for zoekt index shards                                                                                                               |
+| `interval` | `300`                         | Seconds between fetch+index cycles, must be at least `1`                                                                                       |
+| `bare`     | `true`                        | `true` keeps a daemon-owned bare repo mirrored from origin and indexes `HEAD`, `false` keeps a normal clone and indexes its checked out `HEAD` |
+| `include`  | `[]`                          | Extra directories to discover repos (1 level)                                                                                                  |
 
 The `include` paths are scanned one level deep for both bare and non-bare git
-repos. No git operations (fetch/pull/push) are run on included repos -- they are
-only indexed. This is useful for indexing self-hosted Gitea or GitLab
-repositories directly from their storage directories.
+repos. Included repos are only indexed, miroir never fetches, pulls, or pushes
+them. This is useful for indexing self-hosted Gitea or GitLab repositories
+directly from their storage directories.
 
 ## Usage
 
@@ -169,9 +169,9 @@ miroir <command> [flags]
 
 By default, miroir targets the repo matching your current directory.
 
-- `-n, --name <repo>` -- Target a specific repo by name
-- `-a, --all` -- Target all non-archived repos
-- `-f, --force` -- Force operation
+- `-n, --name <repo>` targets a specific repo by name
+- `-a, --all` targets all non-archived repos
+- `-f, --force` forces the operation
 
 Flags are scoped per command: `-n`/`-a` apply to `init`, `fetch`, `pull`,
 `push`, `exec`, and `sync`. `-f` applies to `init`, `fetch`, `pull`, `push`, and
@@ -181,7 +181,7 @@ take is rejected with an error rather than silently ignored.
 
 ### Commands
 
-**init** -- Clone and set up repo(s) with all configured remotes
+**init** clones and sets up repo(s) with all configured remotes
 
 ```sh
 miroir init                   # Init repo for cwd
@@ -193,7 +193,7 @@ Creates the directory, initializes git, adds all named platform remotes plus
 the repo already exists, `init` refuses to overwrite a dirty working tree unless
 you pass `-f`.
 
-**fetch** -- Fetch from all remotes (concurrent)
+**fetch** fetches from all remotes concurrently
 
 ```sh
 miroir fetch -a
@@ -203,7 +203,7 @@ The platform marked `origin = true` is operated through the literal `origin`
 remote so shell prompt tooling sees up-to-date upstream state, while progress
 output still shows the configured platform name.
 
-**pull** -- Pull from origin
+**pull** pulls from origin
 
 ```sh
 miroir pull                   # Fails if working tree is dirty
@@ -212,14 +212,14 @@ miroir pull -f                # Hard reset then pull
 
 Also updates submodules recursively.
 
-**push** -- Push to all remotes (concurrent)
+**push** pushes to all remotes concurrently
 
 ```sh
 miroir push -a
 miroir push -f                # Force push
 ```
 
-**exec** -- Run a command in repo(s)
+**exec** runs a command in repo(s)
 
 ```sh
 miroir exec -a -- git status
@@ -228,7 +228,7 @@ miroir exec -n myrepo -- make build
 
 Runs sequentially with direct stdout/stderr passthrough.
 
-**sync** -- Synchronize repo metadata to all forges
+**sync** synchronizes repo metadata to all forges
 
 ```sh
 miroir sync -a
@@ -238,7 +238,7 @@ Creates repos that don't exist, updates description/visibility on existing ones,
 and archives repos marked `archived = true` on forges that support archiving.
 Each forge API call has a 30-second timeout.
 
-**sweep** -- Remove archived and untracked repos from workspace
+**sweep** removes archived and untracked repos from the workspace
 
 ```sh
 miroir sweep                  # Dry run
@@ -253,7 +253,7 @@ such as a general `~/Workspace`.
 and removes directories for archived repos plus directories not present in
 `[repo.*]`.
 
-**index** -- Start the index daemon (server-side)
+**index** starts the index daemon on the server
 
 ```sh
 miroir index
@@ -271,10 +271,11 @@ Starts a long-running daemon that:
 6. Serves the zoekt search API and web UI over HTTP
 
 With `index.bare = true`, miroir keeps a daemon-owned bare repo at
-`general.home/<repo>.git`. Each cycle rewrites the `origin` fetch refspec to
-track `refs/remotes/origin/*`, runs `git fetch --prune origin`, force-syncs the
-local `refs/heads/*` set to match origin, points `HEAD` at the configured
-branch, and indexes `HEAD`.
+`general.home/<repo>.git`. Each cycle fetches origin heads straight into
+`refs/heads/*` with prune and without tags, so the local branch set mirrors
+origin, then points `HEAD` at the configured branch and indexes `HEAD`. Auto gc
+runs in the foreground of the fetch, so no detached repack can remove a pack
+while the indexer reads it.
 
 With `index.bare = false`, miroir keeps a normal clone at `general.home/<repo>`.
 The first clone uses the configured branch, later cycles only run
@@ -284,7 +285,7 @@ checked out `HEAD`.
 Included repos from `index.include` are never fetched or deleted by miroir. Only
 their shards are removed if the source repo disappears from discovery.
 
-The searcher hot-reloads index shards -- no restart needed after re-indexing. On
+The searcher hot-reloads index shards, so re-indexing needs no restart. On
 SIGINT/SIGTERM, miroir stops serving immediately, cancels the current cycle, and
 waits for any in-flight fetch or index step to finish before exiting.
 
@@ -295,7 +296,7 @@ Compatible with any zoekt frontend (e.g.
 ZOEKT_URL=http://localhost:6070 neogrok
 ```
 
-**completion** -- Generate shell completions
+**completion** generates shell completions
 
 ```sh
 miroir completion bash >> ~/.bashrc
@@ -317,10 +318,10 @@ state on existing ones.
 
 Forge type is auto-detected from the platform domain:
 
-- `github.com`, `github.*` -- GitHub
-- `gitlab.com`, `gitlab.*` -- GitLab
-- `codeberg.org` -- Codeberg
-- `*.sr.ht`, `sr.ht` -- SourceHut
+- `github.com` and `github.*` map to GitHub
+- `gitlab.com` and `gitlab.*` map to GitLab
+- `codeberg.org` maps to Codeberg
+- `*.sr.ht` and `sr.ht` map to SourceHut
 
 Set `forge = "..."` explicitly to override. Forge API calls target the
 configured domain, so GitHub Enterprise, self-hosted GitLab, and Gitea or
