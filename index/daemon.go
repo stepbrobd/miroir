@@ -135,6 +135,8 @@ func repoIndexName(p config.Platform, repo string) string {
 }
 
 // Run starts the daemon and blocks until ctx is cancelled
+// a cancelled ctx is a clean stop, Run returns nil once the server and
+// the running cycle are down
 func Run(ctx context.Context, c *Cfg) error {
 	if err := os.MkdirAll(c.Database, 0o755); err != nil {
 		return fmt.Errorf("create database dir: %w", err)
@@ -209,10 +211,7 @@ func Run(ctx context.Context, c *Cfg) error {
 			defer cancel()
 			err := httpSrv.Shutdown(shut)
 			cycleWg.Wait()
-			if err != nil {
-				return err
-			}
-			return ctx.Err()
+			return err
 		case err := <-errCh:
 			// abort the running cycle and release server resources
 			cancelCycles()

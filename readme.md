@@ -289,8 +289,8 @@ Included repos from `index.include` are never fetched or deleted by miroir. Only
 their shards are removed if the source repo disappears from discovery.
 
 The searcher hot-reloads index shards, so re-indexing needs no restart. On
-SIGINT/SIGTERM, miroir stops serving immediately, cancels the current cycle, and
-waits for any in-flight fetch or index step to finish before exiting.
+SIGINT/SIGTERM, miroir stops serving immediately, cancels the current cycle,
+waits for any in-flight fetch or index step to finish, and exits 0.
 
 Compatible with any zoekt frontend (e.g.
 [neogrok](https://github.com/isker/neogrok)):

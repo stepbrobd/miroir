@@ -359,8 +359,8 @@ func TestRunCancelWaitsForActiveIndex(t *testing.T) {
 
 	select {
 	case err := <-done:
-		if !errors.Is(err, context.Canceled) {
-			t.Fatalf("got %v want context canceled", err)
+		if err != nil {
+			t.Fatalf("got %v want a clean shutdown", err)
 		}
 	case <-time.After(5 * time.Second):
 		t.Fatal("timed out waiting for shutdown")
