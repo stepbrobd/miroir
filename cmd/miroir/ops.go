@@ -30,6 +30,22 @@ func (a *app) gitCmd(use, short string, op gitops.Op) *cobra.Command {
 	return cmd
 }
 
+func (a *app) pushCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:               "push",
+		Short:             "Push to all remotes",
+		PersistentPreRunE: a.resolveTargets,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return a.runOn(cmd.Context(), gitops.Push{Tags: a.tags}, args)
+		},
+	}
+	a.targetFlags(cmd)
+	a.forceFlag(cmd)
+	a.ttyFlags(cmd)
+	cmd.Flags().BoolVarP(&a.tags, "tags", "t", false, "Push all local tags as well")
+	return cmd
+}
+
 func (a *app) execCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:               "exec [flags] -- <command> [args...]",

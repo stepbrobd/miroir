@@ -175,9 +175,9 @@ By default, miroir targets the repo matching your current directory.
 
 Flags are scoped per command: `-n`/`-a` apply to `init`, `fetch`, `pull`,
 `push`, `exec`, and `sync`. `-f` applies to `init`, `fetch`, `pull`, `push`, and
-`sweep`. `--tty`/`--no-tty` apply to the commands that render progress output
-(`init`, `fetch`, `pull`, `push`, `exec`, `sync`). A flag a command does not
-take is rejected with an error rather than silently ignored.
+`sweep`. `-t` applies to `push`. `--tty`/`--no-tty` apply to the commands that
+render progress output (`init`, `fetch`, `pull`, `push`, `exec`, `sync`). A flag
+a command does not take is rejected with an error rather than silently ignored.
 
 ### Commands
 
@@ -217,6 +217,7 @@ Also updates submodules recursively.
 ```sh
 miroir push -a
 miroir push -f                # Force push
+miroir push -t                # Push every local tag as well
 ```
 
 **exec** runs a command in repo(s)

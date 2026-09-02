@@ -374,6 +374,7 @@ func TestPushAllRemotes(t *testing.T) {
 	}
 	git(t, local, env, "init", "--initial-branch=main")
 	git(t, local, env, "commit", "--allow-empty", "-m", "init")
+	git(t, local, env, "tag", "v1")
 	git(t, local, env, "remote", "add", "origin", r1)
 	git(t, local, env, "remote", "add", "gitlab", r2)
 
@@ -401,5 +402,36 @@ func TestPushAllRemotes(t *testing.T) {
 		if got := gitOut(t, r, "rev-parse", "main"); got != want {
 			t.Fatalf("remote %s head = %s want %s", r, got, want)
 		}
+		if hasTag(r, "v1") {
+			t.Fatalf("remote %s received a tag without Tags", r)
+		}
 	}
+
+	err = Push{Tags: true}.Run(Params{
+		RunCtx: t.Context(),
+		Ctx: &workspace.Context{
+			Path:   local,
+			Env:    env,
+			Branch: "main",
+			Origin: workspace.Remote{Name: "github", GitName: "origin", URI: r1},
+			Push: []workspace.Remote{
+				{Name: "github", GitName: "origin", URI: r1},
+				{Name: "gitlab", GitName: "gitlab", URI: r2},
+			},
+		},
+		Disp: plainDisplay(2),
+		Sem:  make(chan struct{}, 2),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, r := range []string{r1, r2} {
+		if !hasTag(r, "v1") {
+			t.Fatalf("remote %s lacks the tag after Push with Tags", r)
+		}
+	}
+}
+
+func hasTag(dir, tag string) bool {
+	return exec.Command("git", "-C", dir, "rev-parse", "--verify", "--quiet", "refs/tags/"+tag).Run() == nil
 }

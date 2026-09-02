@@ -26,6 +26,7 @@ type app struct {
 	name   string
 	all    bool
 	force  bool
+	tags   bool
 	tty    bool
 	noTTY  bool
 
@@ -47,7 +48,7 @@ func newRoot() *cobra.Command {
 		a.gitCmd("init", "Initialize repo(s)", gitops.Init{}),
 		a.gitCmd("fetch", "Fetch from all remotes", gitops.Fetch{}),
 		a.gitCmd("pull", "Pull from origin", gitops.Pull{}),
-		a.gitCmd("push", "Push to all remotes", gitops.Push{}),
+		a.pushCmd(),
 		a.execCmd(),
 		a.syncCmd(),
 		a.sweepCmd(),

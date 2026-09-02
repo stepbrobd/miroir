@@ -182,10 +182,14 @@ func TestRootCommandsAndFlags(t *testing.T) {
 		}
 	}
 	push, _, _ := root.Find([]string{"push"})
-	for _, flag := range []string{"name", "all", "force", "tty", "no-tty"} {
+	for _, flag := range []string{"name", "all", "force", "tags", "tty", "no-tty"} {
 		if push.Flags().Lookup(flag) == nil {
 			t.Errorf("push lacks --%s", flag)
 		}
+	}
+	fetch, _, _ := root.Find([]string{"fetch"})
+	if fetch.Flags().Lookup("tags") != nil {
+		t.Error("fetch must not take --tags")
 	}
 	sweep, _, _ := root.Find([]string{"sweep"})
 	if sweep.Flags().Lookup("all") != nil {
