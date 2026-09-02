@@ -11,7 +11,6 @@ import (
 	"sync"
 	"testing"
 
-	"code.gitea.io/sdk/gitea"
 	gh "github.com/google/go-github/v84/github"
 	graphql "github.com/hasura/go-graphql-client"
 	gl "gitlab.com/gitlab-org/api/client-go"
@@ -264,11 +263,7 @@ func cbTestForge(t *testing.T, h http.Handler) (*cbForge, *requestLog) {
 		h.ServeHTTP(w, r)
 	}))
 	t.Cleanup(srv.Close)
-	c, err := gitea.NewClient(srv.URL, gitea.SetToken("t"), gitea.SetGiteaVersion(""))
-	if err != nil {
-		t.Fatal(err)
-	}
-	return &cbForge{c: c}, log
+	return &cbForge{url: srv.URL, token: "t", hc: srv.Client()}, log
 }
 
 func TestCodebergSyncUpdatesOnDrift(t *testing.T) {
