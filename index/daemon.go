@@ -21,7 +21,7 @@ import (
 	"ysun.co/miroir/workspace"
 )
 
-// cfg holds resolved daemon configuration
+// Cfg holds resolved daemon configuration
 type Cfg struct {
 	Listen   string
 	Database string // absolute path to shard dir
@@ -38,7 +38,7 @@ type Cfg struct {
 // indexRepo is a seam swapped out by tests
 var indexRepo = IndexRepo
 
-// cfgFrom builds a daemon config from a validated miroir config
+// CfgFrom builds a daemon config from a validated miroir config
 func CfgFrom(c *config.Config) (*Cfg, error) {
 	home, err := workspace.ExpandHome(c.General.Home)
 	if err != nil {
@@ -126,7 +126,7 @@ func repoIndexName(p config.Platform, repo string) string {
 	return path.Join(p.Domain, p.User, repo)
 }
 
-// run starts the daemon and blocks until ctx is cancelled
+// Run starts the daemon and blocks until ctx is cancelled
 func Run(ctx context.Context, c *Cfg) error {
 	if err := os.MkdirAll(c.Database, 0o755); err != nil {
 		return fmt.Errorf("create database dir: %w", err)

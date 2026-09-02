@@ -12,7 +12,7 @@ import (
 	"ysun.co/miroir/workspace"
 )
 
-// selectOptions controls repo target selection
+// SelectOptions controls repo target selection
 type SelectOptions struct {
 	Name string
 	All  bool
@@ -48,7 +48,7 @@ func resolveNames(names []string, home string, opts SelectOptions) ([]string, er
 	return nil, fmt.Errorf("not a managed repository (cwd: %s)", cwd)
 }
 
-// selectTargets resolves selected managed repo paths from config and contexts
+// SelectTargets resolves selected managed repo paths from config and contexts
 // repo names are flat by config validation, so the context path base is the name
 func SelectTargets(cfg *config.Config, ctxs map[string]*workspace.Context, opts SelectOptions) ([]string, error) {
 	home, err := workspace.ExpandHome(cfg.General.Home)
@@ -71,7 +71,7 @@ func SelectTargets(cfg *config.Config, ctxs map[string]*workspace.Context, opts 
 	return paths, nil
 }
 
-// syncNames resolves selected repo names for sync including archived config entries
+// SyncNames resolves selected repo names for sync including archived config entries
 func SyncNames(cfg *config.Config, opts SelectOptions) ([]string, error) {
 	home, err := workspace.ExpandHome(cfg.General.Home)
 	if err != nil {

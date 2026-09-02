@@ -16,16 +16,18 @@ type Reporter interface {
 	Finish()
 }
 
-// remotes returns the number of display lines needed per repo slot
-// 0 means exec sequentially
-// 1 means origin only
-// n means all remotes
+// Op is one git operation run per target repository
 type Op interface {
+	// Remotes returns the number of display lines needed per repo slot
+	// 0 means exec sequentially
+	// 1 means origin only
+	// n means all remotes
 	Remotes(n int) int
 	Run(p Params) error
 }
 
-// runCtx must be non-nil
+// Params carries one repository run
+// RunCtx must be non-nil
 type Params struct {
 	RunCtx context.Context
 	Path   string

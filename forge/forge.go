@@ -15,13 +15,13 @@ type Meta struct {
 	Archived bool
 }
 
-// forge is the per-platform reconciliation entry point
-// sync is create-or-update with archive handling where supported
+// Forge is the per-platform reconciliation entry point
+// Sync is create-or-update with archive handling where supported
 type Forge interface {
 	Sync(ctx context.Context, user string, m Meta) error
 }
 
-// create helpers return ErrExists when the repo already exists
+// ErrExists is returned by create helpers when the repo already exists
 var ErrExists = errors.New("already exists")
 
 func Dispatch(f config.Forge, token, domain string) (Forge, error) {

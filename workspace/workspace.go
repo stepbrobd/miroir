@@ -1,4 +1,4 @@
-// package workspace models managed repository layout and execution context assembly
+// Package workspace models managed repository layout and execution context assembly
 package workspace
 
 import (
@@ -12,15 +12,15 @@ import (
 	"ysun.co/miroir/config"
 )
 
-// remote describes a named git remote URI
+// Remote describes a named git remote URI
 type Remote struct {
 	Name    string
 	GitName string
 	URI     string
 }
 
-// context holds derived git execution settings for one managed repository
-// origin repeats the origin platform's push entry under its literal git name
+// Context holds derived git execution settings for one managed repository
+// Origin repeats the origin platform's push entry under its literal git name
 type Context struct {
 	Env    []string
 	Branch string
@@ -28,7 +28,7 @@ type Context struct {
 	Push   []Remote
 }
 
-// makeURI builds a git remote URI for the configured forge access mode
+// MakeURI builds a git remote URI for the configured forge access mode
 func MakeURI(access config.Access, domain, user, repo string) string {
 	switch access {
 	case config.SSH:
@@ -53,7 +53,7 @@ func home() (string, error) {
 	return h, nil
 }
 
-// expandHome expands a leading ~/ prefix using $HOME
+// ExpandHome expands a leading ~/ prefix using $HOME
 func ExpandHome(path string) (string, error) {
 	if path == "~" {
 		return home()
@@ -68,7 +68,7 @@ func ExpandHome(path string) (string, error) {
 	return path, nil
 }
 
-// mergeEnv extends the process environment with config env entries
+// MergeEnv extends the process environment with config env entries
 // a variable already set in the process environment wins over config
 func MergeEnv(extra map[string]string) []string {
 	base := os.Environ()
@@ -109,7 +109,7 @@ func makeCtx(env []string, platforms map[string]config.Platform, repo, branch st
 	return &Context{Env: env, Branch: branch, Origin: origin, Push: push}
 }
 
-// makeAll builds execution contexts for all non-archived managed repositories
+// MakeAll builds execution contexts for all non-archived managed repositories
 func MakeAll(cfg *config.Config) (map[string]*Context, error) {
 	h, err := ExpandHome(cfg.General.Home)
 	if err != nil {

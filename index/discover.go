@@ -18,7 +18,7 @@ func isNonBareRepo(path string) bool {
 	return err == nil && info.IsDir()
 }
 
-// discover finds git repos one level deep under each dir in paths
+// Discover finds git repos one level deep under each dir in paths
 func Discover(paths []string) ([]string, error) {
 	var repos []string
 	for _, base := range paths {
