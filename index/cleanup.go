@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/log"
+	zoekt "github.com/sourcegraph/zoekt"
 	zoektindex "github.com/sourcegraph/zoekt/index"
 )
 
@@ -123,57 +124,25 @@ func managedRepoName(c *Cfg, entry string) (string, string, bool) {
 	return entry, path, true
 }
 
-func cleanupShards(c *Cfg, discovered []string, includeReady bool) error {
-	entries, err := os.ReadDir(c.Database)
+// removeShards deletes every shard in database whose repositories stale accepts
+func removeShards(database string, stale func(repos []*zoekt.Repository) bool) error {
+	entries, err := os.ReadDir(database)
 	if os.IsNotExist(err) {
 		return nil
 	}
 	if err != nil {
 		return err
 	}
-
-	activeByPath := activeManagedShardNames(c)
-	activeNames := activeIndexNames(c)
-	activeIncludes := make(map[string]struct{}, len(discovered))
-	for _, path := range discovered {
-		activeIncludes[filepath.Clean(path)] = struct{}{}
-	}
 	for _, entry := range entries {
 		if entry.IsDir() || filepath.Ext(entry.Name()) != ".zoekt" {
 			continue
 		}
-		shard := filepath.Join(c.Database, entry.Name())
+		shard := filepath.Join(database, entry.Name())
 		repos, _, err := zoektindex.ReadMetadataPath(shard)
 		if err != nil {
 			return err
 		}
-
-		remove := false
-		for _, repo := range repos {
-			source := filepath.Clean(repo.Source)
-			if filepath.Dir(source) == c.Home {
-				expectedName, ok := activeByPath[source]
-				if !ok || repo.Name != expectedName {
-					remove = true
-					break
-				}
-				continue
-			}
-			if isIncludedSource(source, c.Include) {
-				if _, ok := activeIncludes[source]; includeReady && !ok {
-					remove = true
-					break
-				}
-				continue
-			}
-			// an older home setting leaves shards whose source is gone
-			// but whose name still says they are ours
-			if _, ok := activeNames[repo.Name]; strings.HasPrefix(repo.Name, c.Namespace) && !ok {
-				remove = true
-				break
-			}
-		}
-		if !remove {
+		if !stale(repos) {
 			continue
 		}
 		paths, err := zoektindex.IndexFilePaths(shard)
@@ -190,51 +159,50 @@ func cleanupShards(c *Cfg, discovered []string, includeReady bool) error {
 	return nil
 }
 
-func cleanupManagedShardsForRepo(database, repoPath, expectedName string) error {
-	entries, err := os.ReadDir(database)
-	if os.IsNotExist(err) {
-		return nil
+func cleanupShards(c *Cfg, discovered []string, includeReady bool) error {
+	activeByPath := activeManagedShardNames(c)
+	activeNames := activeIndexNames(c)
+	activeIncludes := make(map[string]struct{}, len(discovered))
+	for _, path := range discovered {
+		activeIncludes[filepath.Clean(path)] = struct{}{}
 	}
-	if err != nil {
-		return err
-	}
-
-	repoPath = filepath.Clean(repoPath)
-	for _, entry := range entries {
-		if entry.IsDir() || filepath.Ext(entry.Name()) != ".zoekt" {
-			continue
-		}
-		shard := filepath.Join(database, entry.Name())
-		repos, _, err := zoektindex.ReadMetadataPath(shard)
-		if err != nil {
-			return err
-		}
-
-		remove := false
+	return removeShards(c.Database, func(repos []*zoekt.Repository) bool {
 		for _, repo := range repos {
-			if filepath.Clean(repo.Source) != repoPath {
+			source := filepath.Clean(repo.Source)
+			if filepath.Dir(source) == c.Home {
+				expectedName, ok := activeByPath[source]
+				if !ok || repo.Name != expectedName {
+					return true
+				}
 				continue
 			}
-			if repo.Name != expectedName {
-				remove = true
-				break
+			if isIncludedSource(source, c.Include) {
+				if _, ok := activeIncludes[source]; includeReady && !ok {
+					return true
+				}
+				continue
+			}
+			// an older home setting leaves shards whose source is gone
+			// but whose name still says they are ours
+			if _, ok := activeNames[repo.Name]; strings.HasPrefix(repo.Name, c.Namespace) && !ok {
+				return true
 			}
 		}
-		if !remove {
-			continue
-		}
-		paths, err := zoektindex.IndexFilePaths(shard)
-		if err != nil {
-			return err
-		}
-		for _, path := range paths {
-			if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
-				return err
+		return false
+	})
+}
+
+// cleanupManagedShardsForRepo drops shards indexed from repoPath under another name
+func cleanupManagedShardsForRepo(database, repoPath, expectedName string) error {
+	repoPath = filepath.Clean(repoPath)
+	return removeShards(database, func(repos []*zoekt.Repository) bool {
+		for _, repo := range repos {
+			if filepath.Clean(repo.Source) == repoPath && repo.Name != expectedName {
+				return true
 			}
 		}
-		log.Info("removed stale managed shard", "path", shard, "repo", expectedName)
-	}
-	return nil
+		return false
+	})
 }
 
 func isIncludedSource(source string, include []string) bool {
