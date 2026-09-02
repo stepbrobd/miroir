@@ -2,8 +2,6 @@ module ysun.co/miroir
 
 go 1.26.0
 
-replace github.com/getsentry/sentry-go => github.com/getsentry/sentry-go v0.45.1
-
 require (
 	charm.land/lipgloss/v2 v2.0.6
 	code.gitea.io/sdk/gitea v0.25.1

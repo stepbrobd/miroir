@@ -146,8 +146,8 @@ schema = 3
     hash = 'sha256-6LBLgsh4nKkMpgRKVsYFEaGDSU1fncBcWVSjKBdfgjU='
 
   [mod.'github.com/getsentry/sentry-go']
-    version = 'v0.45.1'
-    hash = 'sha256-S31+ZGFaUdggiZiHfX0jX513gNixMKrl+PYohNwFQBQ='
+    version = 'v0.49.0'
+    hash = 'sha256-qoKEZHiN0PFIDZaMOmxSU4toYDmOnQaAUgdQtyxXN4g='
 
   [mod.'github.com/go-enry/go-enry/v2']
     version = 'v2.9.6'
