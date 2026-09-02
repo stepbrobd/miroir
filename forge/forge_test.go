@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"slices"
 	"sync"
 	"testing"
 
@@ -117,7 +118,7 @@ func TestGithubSyncCreatesWhenMissing(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := []string{"GET /repos/alice/x", "POST /user/repos"}
-	if got := log.get(); !equalStrings(got, want) {
+	if got := log.get(); !slices.Equal(got, want) {
 		t.Fatalf("requests: got %v want %v", got, want)
 	}
 }
@@ -157,7 +158,7 @@ func TestGithubSyncUnarchivesBeforeUpdate(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := []string{"GET /repos/alice/x", "PATCH /repos/alice/x", "PATCH /repos/alice/x"}
-	if got := log.get(); !equalStrings(got, want) {
+	if got := log.get(); !slices.Equal(got, want) {
 		t.Fatalf("requests: got %v want %v", got, want)
 	}
 	if len(patches) != 2 {
@@ -250,7 +251,7 @@ func TestGitlabSyncArchivesOnDrift(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := []string{"GET /api/v4/projects/alice/x", "POST /api/v4/projects/alice/x/archive"}
-	if got := log.get(); !equalStrings(got, want) {
+	if got := log.get(); !slices.Equal(got, want) {
 		t.Fatalf("requests: got %v want %v", got, want)
 	}
 }
@@ -283,8 +284,69 @@ func TestCodebergSyncUpdatesOnDrift(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := []string{"GET /api/v1/repos/alice/x", "PATCH /api/v1/repos/alice/x"}
-	if got := log.get(); !equalStrings(got, want) {
+	if got := log.get(); !slices.Equal(got, want) {
 		t.Fatalf("requests: got %v want %v", got, want)
+	}
+}
+
+func TestCodebergSyncArchivesAfterCreate(t *testing.T) {
+	f, log := cbTestForge(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == "GET":
+			w.WriteHeader(http.StatusNotFound)
+			fmt.Fprint(w, `{"message":"not found"}`)
+		case r.Method == "POST" && r.URL.Path == "/api/v1/user/repos":
+			w.WriteHeader(http.StatusCreated)
+			fmt.Fprint(w, `{"name":"x"}`)
+		default:
+			fmt.Fprint(w, `{"name":"x"}`)
+		}
+	}))
+	if err := f.Sync(t.Context(), "alice", Meta{Name: "x", Archived: true}); err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"GET /api/v1/repos/alice/x", "POST /api/v1/user/repos", "PATCH /api/v1/repos/alice/x"}
+	if got := log.get(); !slices.Equal(got, want) {
+		t.Fatalf("requests: got %v want %v", got, want)
+	}
+}
+
+func TestCodebergSyncUnarchivesBeforeUpdate(t *testing.T) {
+	var mu sync.Mutex
+	var patches []map[string]any
+	f, log := cbTestForge(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == "GET" {
+			fmt.Fprint(w, `{"name":"x","description":"old","private":true,"archived":true}`)
+			return
+		}
+		var body map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Errorf("decode patch body: %v", err)
+		}
+		mu.Lock()
+		patches = append(patches, body)
+		mu.Unlock()
+		fmt.Fprint(w, `{"name":"x"}`)
+	}))
+	desc := "new"
+	if err := f.Sync(t.Context(), "alice", Meta{Name: "x", Desc: &desc, Vis: config.Private}); err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"GET /api/v1/repos/alice/x", "PATCH /api/v1/repos/alice/x", "PATCH /api/v1/repos/alice/x"}
+	if got := log.get(); !slices.Equal(got, want) {
+		t.Fatalf("requests: got %v want %v", got, want)
+	}
+	if len(patches) != 2 {
+		t.Fatalf("patches: got %d, want 2", len(patches))
+	}
+	if v, ok := patches[0]["archived"].(bool); !ok || v {
+		t.Fatalf("first patch should set archived=false, got %v", patches[0])
+	}
+	if _, ok := patches[0]["description"]; ok {
+		t.Fatalf("first patch should not carry the update, got %v", patches[0])
+	}
+	if v, _ := patches[1]["description"].(string); v != "new" {
+		t.Fatalf("second patch should update description, got %v", patches[1])
 	}
 }
 
@@ -360,16 +422,4 @@ func TestSrhtIsExists(t *testing.T) {
 			t.Errorf("srhtIsExists(%q) = %v, want %v", tt.msg, got, tt.want)
 		}
 	}
-}
-
-func equalStrings(a, b []string) bool {
-	if len(a) != len(b) {
-		return false
-	}
-	for i := range a {
-		if a[i] != b[i] {
-			return false
-		}
-	}
-	return true
 }
