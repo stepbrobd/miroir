@@ -180,14 +180,10 @@ user = "alice"
 		t.Fatalf("cfg not loaded: %+v", cfg)
 	}
 	want := filepath.Join(home, "alpha")
-	if len(targets) != 1 || targets[0] != want {
+	if len(targets) != 1 || targets[0].Path != want {
 		t.Fatalf("targets: got %v, want [%s]", targets, want)
 	}
-	ctx, ok := ctxs[want]
-	if !ok {
-		t.Fatalf("missing workspace context for %s", want)
-	}
-	if ctx.Origin.URI != "git@github.com:alice/alpha" {
-		t.Fatalf("origin uri: got %q", ctx.Origin.URI)
+	if targets[0].Origin.URI != "git@github.com:alice/alpha" {
+		t.Fatalf("origin uri: got %q", targets[0].Origin.URI)
 	}
 }

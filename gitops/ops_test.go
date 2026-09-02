@@ -41,7 +41,7 @@ func plainDisplay(remotes int) *display.Display {
 
 func TestExecNoArgs(t *testing.T) {
 	op := Exec{}
-	err := op.Run(Params{RunCtx: t.Context(), Path: t.TempDir(), Ctx: &workspace.Context{Env: os.Environ()}})
+	err := op.Run(Params{RunCtx: t.Context(), Ctx: &workspace.Context{Path: t.TempDir(), Env: os.Environ()}})
 	if err == nil {
 		t.Fatal("expected error when no command is provided")
 	}
@@ -60,8 +60,7 @@ func TestPullDirtyWithoutForce(t *testing.T) {
 	}
 	err := Pull{}.Run(Params{
 		RunCtx: t.Context(),
-		Path:   dir,
-		Ctx:    &workspace.Context{Env: env, Branch: "main"},
+		Ctx:    &workspace.Context{Path: dir, Env: env, Branch: "main"},
 		Disp:   plainDisplay(1),
 		Sem:    make(chan struct{}, 1),
 	})
@@ -103,8 +102,7 @@ func TestPullForceRemovesUntrackedConflict(t *testing.T) {
 	disp := plainDisplay(1)
 	err := Pull{}.Run(Params{
 		RunCtx: t.Context(),
-		Path:   local,
-		Ctx:    &workspace.Context{Env: env, Branch: "main"},
+		Ctx:    &workspace.Context{Path: local, Env: env, Branch: "main"},
 		Disp:   disp,
 		Sem:    make(chan struct{}, 1),
 	})
@@ -114,8 +112,7 @@ func TestPullForceRemovesUntrackedConflict(t *testing.T) {
 
 	err = Pull{}.Run(Params{
 		RunCtx: t.Context(),
-		Path:   local,
-		Ctx:    &workspace.Context{Env: env, Branch: "main"},
+		Ctx:    &workspace.Context{Path: local, Env: env, Branch: "main"},
 		Disp:   disp,
 		Sem:    make(chan struct{}, 1),
 		Force:  true,
@@ -161,8 +158,8 @@ func TestInitPopulatesSubmodules(t *testing.T) {
 	local := filepath.Join(tmp, "local")
 	err := Init{}.Run(Params{
 		RunCtx: t.Context(),
-		Path:   local,
 		Ctx: &workspace.Context{
+			Path:   local,
 			Env:    env,
 			Branch: "main",
 			Origin: workspace.Remote{Name: "origin", GitName: "origin", URI: parent},
@@ -194,8 +191,8 @@ func TestInitDirtyExistingRepoRequiresForce(t *testing.T) {
 
 	err := Init{}.Run(Params{
 		RunCtx: t.Context(),
-		Path:   dir,
 		Ctx: &workspace.Context{
+			Path:   dir,
 			Env:    env,
 			Branch: "main",
 		},
@@ -242,9 +239,9 @@ func TestInitForceResetsTrackedAndUntrackedChanges(t *testing.T) {
 
 	err := Init{}.Run(Params{
 		RunCtx: t.Context(),
-		Path:   local,
 		Force:  true,
 		Ctx: &workspace.Context{
+			Path:   local,
 			Env:    env,
 			Branch: "main",
 			Origin: workspace.Remote{Name: "origin", GitName: "origin", URI: remote},
@@ -301,8 +298,8 @@ func TestFetchAllRemotes(t *testing.T) {
 
 	err := Fetch{}.Run(Params{
 		RunCtx: t.Context(),
-		Path:   local,
 		Ctx: &workspace.Context{
+			Path:   local,
 			Env:    env,
 			Branch: "main",
 			Origin: workspace.Remote{Name: "github", GitName: "origin", URI: r1},
@@ -341,8 +338,8 @@ func TestFetchReportsFailedRemote(t *testing.T) {
 
 	err := Fetch{}.Run(Params{
 		RunCtx: t.Context(),
-		Path:   local,
 		Ctx: &workspace.Context{
+			Path:   local,
 			Env:    env,
 			Branch: "main",
 			Push:   []workspace.Remote{{Name: "github", GitName: "origin", URI: filepath.Join(tmp, "missing")}},
@@ -382,8 +379,8 @@ func TestPushAllRemotes(t *testing.T) {
 
 	err := Push{}.Run(Params{
 		RunCtx: t.Context(),
-		Path:   local,
 		Ctx: &workspace.Context{
+			Path:   local,
 			Env:    env,
 			Branch: "main",
 			Origin: workspace.Remote{Name: "github", GitName: "origin", URI: r1},

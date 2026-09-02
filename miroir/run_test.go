@@ -52,6 +52,14 @@ func (f *fakeReporter) Finish() {
 	f.finished = true
 }
 
+func targets(names ...string) []*workspace.Context {
+	ctxs := make([]*workspace.Context, len(names))
+	for i, name := range names {
+		ctxs[i] = &workspace.Context{Name: name, Path: "/tmp/" + name}
+	}
+	return ctxs
+}
+
 type fakeOp struct {
 	remotes int
 	run     func(p gitops.Params) error
@@ -73,9 +81,8 @@ func (r *cancelOnClearReporter) Clear(slot int) {
 
 func TestRunGitOpSequentialSuccess(t *testing.T) {
 	reporter := &fakeReporter{}
-	ctxs := map[string]*workspace.Context{"/tmp/a": {}}
 	op := fakeOp{remotes: 0, run: func(p gitops.Params) error { return nil }}
-	err := RunGitOp(op, RunOptions{Context: t.Context(), Targets: []string{"/tmp/a"}, Contexts: ctxs, PlatformCount: 1, RepoConcurrency: 1, Reporter: reporter})
+	err := RunGitOp(op, RunOptions{Context: t.Context(), Targets: targets("a"), PlatformCount: 1, RepoConcurrency: 1, Reporter: reporter})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -86,14 +93,13 @@ func TestRunGitOpSequentialSuccess(t *testing.T) {
 
 func TestRunGitOpParallelFailure(t *testing.T) {
 	reporter := &fakeReporter{}
-	ctxs := map[string]*workspace.Context{"/tmp/a": {}, "/tmp/b": {}}
 	op := fakeOp{remotes: 1, run: func(p gitops.Params) error {
-		if p.Path == "/tmp/b" {
+		if p.Ctx.Name == "b" {
 			return errors.New("boom")
 		}
 		return nil
 	}}
-	err := RunGitOp(op, RunOptions{Context: t.Context(), Targets: []string{"/tmp/a", "/tmp/b"}, Contexts: ctxs, PlatformCount: 1, RepoConcurrency: 2, Reporter: reporter})
+	err := RunGitOp(op, RunOptions{Context: t.Context(), Targets: targets("a", "b"), PlatformCount: 1, RepoConcurrency: 2, Reporter: reporter})
 	if err == nil {
 		t.Fatal("expected error")
 	}
@@ -104,14 +110,12 @@ func TestRunGitOpParallelFailure(t *testing.T) {
 
 func TestRunGitOpSequentialFailureDoesNotReportRepoError(t *testing.T) {
 	reporter := &fakeReporter{}
-	ctxs := map[string]*workspace.Context{"/tmp/a": {}}
 	op := fakeOp{remotes: 0, run: func(p gitops.Params) error {
 		return errors.New("boom")
 	}}
 	err := RunGitOp(op, RunOptions{
 		Context:         t.Context(),
-		Targets:         []string{"/tmp/a"},
-		Contexts:        ctxs,
+		Targets:         targets("a"),
 		PlatformCount:   1,
 		RepoConcurrency: 1,
 		Reporter:        reporter,
@@ -129,18 +133,14 @@ func TestRunGitOpSequentialCancelStopsLaterTargets(t *testing.T) {
 	defer cancel()
 
 	reporter := &fakeReporter{}
-	ctxs := map[string]*workspace.Context{
-		"/tmp/a": {},
-		"/tmp/b": {},
-	}
 
 	var seen []string
 	var mu sync.Mutex
 	op := fakeOp{remotes: 0, run: func(p gitops.Params) error {
 		mu.Lock()
-		seen = append(seen, p.Path)
+		seen = append(seen, p.Ctx.Name)
 		mu.Unlock()
-		if p.Path == "/tmp/a" {
+		if p.Ctx.Name == "a" {
 			cancel()
 			return context.Canceled
 		}
@@ -149,8 +149,7 @@ func TestRunGitOpSequentialCancelStopsLaterTargets(t *testing.T) {
 
 	err := RunGitOp(op, RunOptions{
 		Context:         ctx,
-		Targets:         []string{"/tmp/a", "/tmp/b"},
-		Contexts:        ctxs,
+		Targets:         targets("a", "b"),
 		PlatformCount:   1,
 		RepoConcurrency: 1,
 		Reporter:        reporter,
@@ -158,7 +157,7 @@ func TestRunGitOpSequentialCancelStopsLaterTargets(t *testing.T) {
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("got %v want context canceled", err)
 	}
-	if len(seen) != 1 || seen[0] != "/tmp/a" {
+	if len(seen) != 1 || seen[0] != "a" {
 		t.Fatalf("expected only first repo to run got %v", seen)
 	}
 	if !reporter.finished {
@@ -171,10 +170,6 @@ func TestRunGitOpParallelCancelDoesNotReportRepoErrors(t *testing.T) {
 	defer cancel()
 
 	reporter := &fakeReporter{}
-	ctxs := map[string]*workspace.Context{
-		"/tmp/a": {},
-		"/tmp/b": {},
-	}
 
 	started := make(chan struct{}, 2)
 	op := fakeOp{remotes: 1, run: func(p gitops.Params) error {
@@ -186,8 +181,7 @@ func TestRunGitOpParallelCancelDoesNotReportRepoErrors(t *testing.T) {
 
 	err := RunGitOp(op, RunOptions{
 		Context:         ctx,
-		Targets:         []string{"/tmp/a", "/tmp/b"},
-		Contexts:        ctxs,
+		Targets:         targets("a", "b"),
 		PlatformCount:   1,
 		RepoConcurrency: 2,
 		Reporter:        reporter,
@@ -205,7 +199,6 @@ func TestRunGitOpParallelCancelDoesNotReportRepoErrors(t *testing.T) {
 
 func TestRunGitOpRemoteLimitIsPerRepo(t *testing.T) {
 	reporter := &fakeReporter{}
-	ctxs := map[string]*workspace.Context{"/tmp/a": {}, "/tmp/b": {}}
 	ready := make(chan struct{}, 2)
 	release := make(chan struct{})
 	op := fakeOp{remotes: 1, run: func(p gitops.Params) error {
@@ -220,8 +213,7 @@ func TestRunGitOpRemoteLimitIsPerRepo(t *testing.T) {
 	go func() {
 		done <- RunGitOp(op, RunOptions{
 			Context:           t.Context(),
-			Targets:           []string{"/tmp/a", "/tmp/b"},
-			Contexts:          ctxs,
+			Targets:           targets("a", "b"),
 			PlatformCount:     1,
 			RepoConcurrency:   2,
 			RemoteConcurrency: 1,

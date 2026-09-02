@@ -11,31 +11,31 @@ import (
 
 func TestSelectTargetsByName(t *testing.T) {
 	cfg := &config.Config{General: config.General{Home: "/tmp/ws"}}
-	ctxs := map[string]*workspace.Context{
-		filepath.Join("/tmp/ws", "alpha"): {},
-		filepath.Join("/tmp/ws", "beta"):  {},
+	ctxs := []*workspace.Context{
+		{Name: "alpha", Path: "/tmp/ws/alpha"},
+		{Name: "beta", Path: "/tmp/ws/beta"},
 	}
 	got, err := SelectTargets(cfg, ctxs, SelectOptions{Name: "beta"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(got) != 1 || got[0] != "/tmp/ws/beta" {
+	if len(got) != 1 || got[0].Path != "/tmp/ws/beta" {
 		t.Fatalf("got %v, want [/tmp/ws/beta]", got)
 	}
 }
 
 func TestSelectTargetsAllSorted(t *testing.T) {
 	cfg := &config.Config{General: config.General{Home: "/tmp/ws"}}
-	ctxs := map[string]*workspace.Context{
-		filepath.Join("/tmp/ws", "beta"):  {},
-		filepath.Join("/tmp/ws", "alpha"): {},
+	ctxs := []*workspace.Context{
+		{Name: "beta", Path: "/tmp/ws/beta"},
+		{Name: "alpha", Path: "/tmp/ws/alpha"},
 	}
 	got, err := SelectTargets(cfg, ctxs, SelectOptions{All: true})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(got) != 2 || got[0] != "/tmp/ws/alpha" || got[1] != "/tmp/ws/beta" {
-		t.Fatalf("got %v, want sorted [alpha beta] paths", got)
+	if len(got) != 2 || got[0].Name != "alpha" || got[1].Name != "beta" {
+		t.Fatalf("got %v, want sorted [alpha beta]", got)
 	}
 }
 

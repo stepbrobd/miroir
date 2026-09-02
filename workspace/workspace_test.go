@@ -58,6 +58,15 @@ func TestExpandHomeNoHOME(t *testing.T) {
 	}
 }
 
+func byName(ctxs []*Context, name string) *Context {
+	for _, c := range ctxs {
+		if c.Name == name {
+			return c
+		}
+	}
+	return nil
+}
+
 func TestMakeAll(t *testing.T) {
 	t.Setenv("HOME", "/home/test")
 	gh := config.Github
@@ -90,23 +99,22 @@ func TestMakeAll(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if _, ok := ctxs["/home/test/ws/skip"]; ok {
-		t.Error("archived repo should be excluded")
+	names := make([]string, len(ctxs))
+	for i, c := range ctxs {
+		names[i] = c.Name
+	}
+	if !slices.Equal(names, []string{"active", "custom"}) {
+		t.Fatalf("got %v want sorted non-archived names", names)
 	}
 
-	active, ok := ctxs["/home/test/ws/active"]
-	if !ok {
-		t.Fatal("active repo not found")
+	active := byName(ctxs, "active")
+	if active.Path != "/home/test/ws/active" {
+		t.Errorf("active path: got %q", active.Path)
 	}
 	if active.Branch != "master" {
 		t.Errorf("active branch: got %q, want %q", active.Branch, "master")
 	}
-
-	custom, ok := ctxs["/home/test/ws/custom"]
-	if !ok {
-		t.Fatal("custom repo not found")
-	}
-	if custom.Branch != "develop" {
+	if custom := byName(ctxs, "custom"); custom.Branch != "develop" {
 		t.Errorf("custom branch: got %q, want %q", custom.Branch, "develop")
 	}
 
@@ -159,7 +167,7 @@ func TestMakeAllOriginAliasPreservesDisplayName(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ctx := ctxs["/ws/r"]
+	ctx := byName(ctxs, "r")
 	if len(ctx.Push) != 2 {
 		t.Fatalf("push remotes: got %d, want 2", len(ctx.Push))
 	}

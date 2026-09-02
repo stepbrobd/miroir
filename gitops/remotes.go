@@ -28,7 +28,7 @@ func eachRemote(p Params, verb, fail string, args func(r workspace.Remote) []str
 			}
 
 			p.Disp.Remote(p.Slot, j, fmt.Sprintf("%s :: %s...", r.Name, verb))
-			err := run(p.RunCtx, p.Path, p.Ctx.Env,
+			err := run(p.RunCtx, p.Ctx.Path, p.Ctx.Env,
 				func(s string) { p.Disp.Output(p.Slot, j, s) },
 				append(args(r), p.Args...)...)
 			if err != nil {

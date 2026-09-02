@@ -48,27 +48,28 @@ func resolveNames(names []string, home string, opts SelectOptions) ([]string, er
 	return nil, fmt.Errorf("not a managed repository (cwd: %s)", cwd)
 }
 
-// SelectTargets resolves selected managed repo paths from config and contexts
-// repo names are flat by config validation, so the context path base is the name
-func SelectTargets(cfg *config.Config, ctxs map[string]*workspace.Context, opts SelectOptions) ([]string, error) {
+// SelectTargets resolves the selected managed repositories by name, all, or cwd
+func SelectTargets(cfg *config.Config, ctxs []*workspace.Context, opts SelectOptions) ([]*workspace.Context, error) {
 	home, err := workspace.ExpandHome(cfg.General.Home)
 	if err != nil {
 		return nil, err
 	}
 	names := make([]string, 0, len(ctxs))
-	for path := range ctxs {
-		names = append(names, filepath.Base(path))
+	byName := make(map[string]*workspace.Context, len(ctxs))
+	for _, c := range ctxs {
+		names = append(names, c.Name)
+		byName[c.Name] = c
 	}
 	slices.Sort(names)
 	matched, err := resolveNames(names, home, opts)
 	if err != nil {
 		return nil, err
 	}
-	paths := make([]string, len(matched))
+	targets := make([]*workspace.Context, len(matched))
 	for i, name := range matched {
-		paths[i] = filepath.Join(home, name)
+		targets[i] = byName[name]
 	}
-	return paths, nil
+	return targets, nil
 }
 
 // SyncNames resolves selected repo names for sync including archived config entries

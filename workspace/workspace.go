@@ -20,8 +20,11 @@ type Remote struct {
 }
 
 // Context holds derived git execution settings for one managed repository
+// Path is the checkout under general.home
 // Origin repeats the origin platform's push entry under its literal git name
 type Context struct {
+	Name   string
+	Path   string
 	Env    []string
 	Branch string
 	Origin Remote
@@ -93,31 +96,32 @@ func MergeEnv(extra map[string]string) []string {
 }
 
 // makeCtx assumes config validation guaranteed exactly one origin platform
-func makeCtx(env []string, platforms map[string]config.Platform, repo, branch string) *Context {
-	names := slices.Sorted(maps.Keys(platforms))
+func makeCtx(env []string, platforms map[string]config.Platform, name, path, branch string) *Context {
+	pnames := slices.Sorted(maps.Keys(platforms))
 	var origin Remote
-	push := make([]Remote, 0, len(names))
-	for _, n := range names {
+	push := make([]Remote, 0, len(pnames))
+	for _, n := range pnames {
 		p := platforms[n]
-		r := Remote{Name: n, GitName: n, URI: MakeURI(p.Access, p.Domain, p.User, repo)}
+		r := Remote{Name: n, GitName: n, URI: MakeURI(p.Access, p.Domain, p.User, name)}
 		if p.Origin {
 			r.GitName = "origin"
 			origin = r
 		}
 		push = append(push, r)
 	}
-	return &Context{Env: env, Branch: branch, Origin: origin, Push: push}
+	return &Context{Name: name, Path: path, Env: env, Branch: branch, Origin: origin, Push: push}
 }
 
-// MakeAll builds execution contexts for all non-archived managed repositories
-func MakeAll(cfg *config.Config) (map[string]*Context, error) {
+// MakeAll builds execution contexts for all non-archived managed repositories sorted by name
+func MakeAll(cfg *config.Config) ([]*Context, error) {
 	h, err := ExpandHome(cfg.General.Home)
 	if err != nil {
 		return nil, err
 	}
 	env := MergeEnv(cfg.General.Env)
-	ctxs := make(map[string]*Context)
-	for name, repo := range cfg.Repo {
+	ctxs := make([]*Context, 0, len(cfg.Repo))
+	for _, name := range slices.Sorted(maps.Keys(cfg.Repo)) {
+		repo := cfg.Repo[name]
 		if repo.Archived {
 			continue
 		}
@@ -125,7 +129,7 @@ func MakeAll(cfg *config.Config) (map[string]*Context, error) {
 		if repo.Branch != nil {
 			branch = *repo.Branch
 		}
-		ctxs[filepath.Join(h, name)] = makeCtx(env, cfg.Platform, name, branch)
+		ctxs = append(ctxs, makeCtx(env, cfg.Platform, name, filepath.Join(h, name), branch))
 	}
 	return ctxs, nil
 }

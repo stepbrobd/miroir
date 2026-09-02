@@ -6,12 +6,6 @@ import (
 	"testing"
 )
 
-func TestRepoName(t *testing.T) {
-	if got := repoName("/home/user/ws/myrepo"); got != "myrepo" {
-		t.Errorf("got %q, want %q", got, "myrepo")
-	}
-}
-
 func TestEnsureRepoMissing(t *testing.T) {
 	err := ensureRepo(t.TempDir())
 	if err == nil {

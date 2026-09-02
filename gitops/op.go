@@ -30,7 +30,6 @@ type Op interface {
 // RunCtx must be non-nil
 type Params struct {
 	RunCtx context.Context
-	Path   string
 	Ctx    *workspace.Context
 	Disp   Reporter
 	Slot   int

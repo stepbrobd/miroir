@@ -28,8 +28,7 @@ var (
 	noTTYFlag bool
 
 	// set by resolveTargets before subcommand RunE
-	targets []string
-	ctxs    map[string]*workspace.Context
+	targets []*workspace.Context
 	cfg     *config.Config
 )
 
@@ -89,8 +88,7 @@ func resolveTargets(cmd *cobra.Command, args []string) error {
 	if err := loadConfig(cmd, args); err != nil {
 		return err
 	}
-	var err error
-	ctxs, err = workspace.MakeAll(cfg)
+	ctxs, err := workspace.MakeAll(cfg)
 	if err != nil {
 		return err
 	}

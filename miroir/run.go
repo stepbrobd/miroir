@@ -4,7 +4,6 @@ package miroir
 import (
 	"context"
 	"fmt"
-	"path/filepath"
 	"sync"
 
 	"github.com/charmbracelet/log"
@@ -18,8 +17,7 @@ import (
 // Context must be non-nil
 type RunOptions struct {
 	Context           context.Context
-	Targets           []string
-	Contexts          map[string]*workspace.Context
+	Targets           []*workspace.Context
 	PlatformCount     int
 	RepoConcurrency   int
 	RemoteConcurrency int
@@ -50,7 +48,7 @@ func remoteSlots(limit, remotes int) int {
 
 // pooled runs fn for every item on a display slot, at most repos at a time
 // each item gets its own semaphore so concurrency.remote bounds per repo
-func pooled(ctx context.Context, items []string, repos, remotes int, disp gitops.Reporter, fn func(slot int, sem chan struct{}, item string)) {
+func pooled[T any](ctx context.Context, items []T, repos, remotes int, disp gitops.Reporter, fn func(slot int, sem chan struct{}, item T)) {
 	pool := make(chan int, repos)
 	for i := range repos {
 		pool <- i
@@ -85,14 +83,14 @@ func RunGitOp(op gitops.Op, opts RunOptions) error {
 
 	var errs []repoErr
 	var errMu sync.Mutex
-	runOne := func(slot int, sem chan struct{}, target string) {
+	runOne := func(slot int, sem chan struct{}, target *workspace.Context) {
 		err := op.Run(gitops.Params{
-			RunCtx: ctx, Path: target, Ctx: opts.Contexts[target], Disp: opts.Reporter,
+			RunCtx: ctx, Ctx: target, Disp: opts.Reporter,
 			Slot: slot, Sem: sem, Force: opts.Force, Args: opts.Args,
 		})
 		if err != nil && ctx.Err() == nil {
 			errMu.Lock()
-			errs = append(errs, repoErr{repo: filepath.Base(target), msg: err.Error()})
+			errs = append(errs, repoErr{repo: target.Name, msg: err.Error()})
 			errMu.Unlock()
 		}
 	}
@@ -121,11 +119,10 @@ func RunGitOp(op gitops.Op, opts RunOptions) error {
 }
 
 // SelectRunOptions builds RunOptions from config targets and a reporter
-func SelectRunOptions(ctx context.Context, cfg *config.Config, targets []string, ctxs map[string]*workspace.Context, reporter gitops.Reporter, force bool, args []string) RunOptions {
+func SelectRunOptions(ctx context.Context, cfg *config.Config, targets []*workspace.Context, reporter gitops.Reporter, force bool, args []string) RunOptions {
 	return RunOptions{
 		Context:           ctx,
 		Targets:           targets,
-		Contexts:          ctxs,
 		PlatformCount:     len(cfg.Platform),
 		RepoConcurrency:   cfg.General.Concurrency.Repo,
 		RemoteConcurrency: cfg.General.Concurrency.Remote,

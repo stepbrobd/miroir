@@ -87,10 +87,6 @@ func run(ctx context.Context, dir string, env []string, onOutput func(string), a
 	return nil
 }
 
-func repoName(path string) string {
-	return filepath.Base(path)
-}
-
 func ensureRepo(path string) error {
 	info, err := os.Stat(filepath.Join(path, ".git"))
 	if err != nil || !info.IsDir() {

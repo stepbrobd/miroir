@@ -87,7 +87,7 @@ func init() {
 
 func runOn(ctx context.Context, op gitops.Op, force bool, extra []string) error {
 	disp := display.New(min(cfg.General.Concurrency.Repo, max(1, len(targets))), op.Remotes(len(cfg.Platform)), display.DefaultTheme, ttyOverride())
-	return miroir.RunGitOp(op, miroir.SelectRunOptions(ctx, cfg, targets, ctxs, disp, force, extra))
+	return miroir.RunGitOp(op, miroir.SelectRunOptions(ctx, cfg, targets, disp, force, extra))
 }
 
 func runSync(ctx context.Context) error {

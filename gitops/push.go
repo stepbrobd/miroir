@@ -11,8 +11,8 @@ type Push struct{}
 func (Push) Remotes(n int) int { return n }
 
 func (Push) Run(p Params) error {
-	p.Disp.Repo(p.Slot, fmt.Sprintf("%s :: push", repoName(p.Path)))
-	if err := ensureRepo(p.Path); err != nil {
+	p.Disp.Repo(p.Slot, fmt.Sprintf("%s :: push", p.Ctx.Name))
+	if err := ensureRepo(p.Ctx.Path); err != nil {
 		return err
 	}
 	return eachRemote(p, "pushing", "push to", func(r workspace.Remote) []string {
