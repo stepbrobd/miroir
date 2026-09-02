@@ -34,6 +34,8 @@
         modules = ./gomod2nix.toml;
         subPackages = [ "cmd/miroir" ];
         ldflags = [ "-X" "main.version=${finalAttrs.version}" ];
+        # tests run in the flake checks, never inside a package build
+        doCheck = false;
         nativeBuildInputs = [ pkgs.installShellFiles ];
         postInstall = ''
           for shell in bash zsh fish; do
@@ -41,6 +43,39 @@
           done
         '';
       }));
+
+      checks =
+        let
+          # a go tool run inside the package build, so the vendored modules are on hand
+          go = name: tools: command: self'.packages.default.overrideAttrs (old: {
+            pname = "miroir-${name}";
+            nativeBuildInputs = old.nativeBuildInputs ++ tools;
+            buildPhase = ''
+              export HOME="$TMPDIR"
+              ${command}
+            '';
+            installPhase = ''touch "$out"'';
+            # tests bind loopback listeners, the darwin sandbox forbids that by default
+            __darwinAllowLocalNetworking = true;
+          });
+
+          # a tool that only reads the tree
+          over = name: tools: command: pkgs.runCommand "miroir-${name}" { nativeBuildInputs = tools; } ''
+            export HOME="$TMPDIR"
+            cd ${inputs.self}
+            ${command}
+            touch "$out"
+          '';
+        in
+        {
+          deno = over "deno" [ pkgs.deno ] "deno fmt --check readme.md";
+          gofmt = go "gofmt" [ ] ''test -z "$(gofmt -l $(go list -f '{{.Dir}}' ./...))"'';
+          nixpkgs-fmt = over "nixpkgs-fmt" [ pkgs.nixpkgs-fmt ] "nixpkgs-fmt --check .";
+          staticcheck = go "staticcheck" [ pkgs.go-tools ] "staticcheck ./...";
+          taplo = over "taplo" [ pkgs.taplo ] "taplo fmt --check";
+          test = go "test" [ pkgs.git ] "go test -race ./...";
+          vet = go "vet" [ ] "go vet ./...";
+        };
 
       devShells.default = pkgs.mkShell {
         inputsFrom = lib.attrValues self'.packages;
