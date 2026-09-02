@@ -109,57 +109,22 @@ func syncRepo(ctx context.Context, cfg *config.Config, disp gitops.Reporter, slo
 	return errs
 }
 
-// runSync syncs repo metadata to all configured forges for the given names
+// RunSync syncs repo metadata to all configured forges for the given names
 // ctx must be non-nil
 func RunSync(ctx context.Context, cfg *config.Config, names []string, disp gitops.Reporter) error {
-	nrepos := len(names)
-	nremotes := len(cfg.Platform)
-	rc := min(cfg.General.Concurrency.Repo, nrepos)
-	rcRemote := cfg.General.Concurrency.Remote
-	mc := nremotes
-	if rcRemote > 0 {
-		mc = min(rcRemote, nremotes)
-	}
-
-	pool := make(chan int, rc)
-	for i := range rc {
-		pool <- i
-	}
-
 	var (
 		errs  []repoRemoteErr
 		errMu sync.Mutex
-		wg    sync.WaitGroup
 	)
-
-	for _, name := range names {
-		wg.Add(1)
-		go func(name string) {
-			defer wg.Done()
-			var slot int
-			select {
-			case slot = <-pool:
-			case <-ctx.Done():
-				return
-			}
-			defer func() { pool <- slot }()
-			disp.Clear(slot)
-
-			if ctx.Err() != nil {
-				return
-			}
-			// concurrency.remote bounds forge calls per repo, so each
-			// repo gets its own semaphore
-			sem := make(chan struct{}, mc)
-			for _, re := range syncRepo(ctx, cfg, disp, slot, sem, name) {
-				errMu.Lock()
-				errs = append(errs, repoRemoteErr{name, re.remote, re.msg})
-				errMu.Unlock()
-			}
-		}(name)
-	}
-	wg.Wait()
-	disp.Finish()
+	rc := min(cfg.General.Concurrency.Repo, len(names))
+	mc := remoteSlots(cfg.General.Concurrency.Remote, len(cfg.Platform))
+	pooled(ctx, names, rc, mc, disp, func(slot int, sem chan struct{}, name string) {
+		for _, re := range syncRepo(ctx, cfg, disp, slot, sem, name) {
+			errMu.Lock()
+			errs = append(errs, repoRemoteErr{name, re.remote, re.msg})
+			errMu.Unlock()
+		}
+	})
 
 	if err := ctx.Err(); err != nil {
 		return err

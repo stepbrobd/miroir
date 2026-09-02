@@ -1,4 +1,4 @@
-// package miroir contains high-level orchestration for miroir workflows
+// Package miroir contains high-level orchestration for miroir workflows
 package miroir
 
 import (
@@ -14,8 +14,8 @@ import (
 	"ysun.co/miroir/workspace"
 )
 
-// runOptions configures a batch git operation run
-// context must be non-nil
+// RunOptions configures a batch git operation run
+// Context must be non-nil
 type RunOptions struct {
 	Context           context.Context
 	Targets           []string
@@ -40,87 +40,75 @@ func reportRepoErrors(errs []repoErr) error {
 	return fmt.Errorf("%d operation(s) failed", len(errs))
 }
 
-// runGitOp runs a git operation across the selected target repositories
+// remoteSlots bounds concurrent remote ops per repo, 0 means all at once
+func remoteSlots(limit, remotes int) int {
+	if limit > 0 {
+		return min(limit, remotes)
+	}
+	return remotes
+}
+
+// pooled runs fn for every item on a display slot, at most repos at a time
+// each item gets its own semaphore so concurrency.remote bounds per repo
+func pooled(ctx context.Context, items []string, repos, remotes int, disp gitops.Reporter, fn func(slot int, sem chan struct{}, item string)) {
+	pool := make(chan int, repos)
+	for i := range repos {
+		pool <- i
+	}
+
+	var wg sync.WaitGroup
+	for _, item := range items {
+		wg.Go(func() {
+			var slot int
+			select {
+			case slot = <-pool:
+			case <-ctx.Done():
+				return
+			}
+			defer func() { pool <- slot }()
+			disp.Clear(slot)
+
+			if ctx.Err() != nil {
+				return
+			}
+			fn(slot, make(chan struct{}, remotes), item)
+		})
+	}
+	wg.Wait()
+	disp.Finish()
+}
+
+// RunGitOp runs a git operation across the selected target repositories
 func RunGitOp(op gitops.Op, opts RunOptions) error {
 	ctx := opts.Context
 	nr := op.Remotes(opts.PlatformCount)
 
 	var errs []repoErr
 	var errMu sync.Mutex
-	addErr := func(repo, msg string) {
-		errMu.Lock()
-		errs = append(errs, repoErr{repo: repo, msg: msg})
-		errMu.Unlock()
+	runOne := func(slot int, sem chan struct{}, target string) {
+		err := op.Run(gitops.Params{
+			RunCtx: ctx, Path: target, Ctx: opts.Contexts[target], Disp: opts.Reporter,
+			Slot: slot, Sem: sem, Force: opts.Force, Args: opts.Args,
+		})
+		if err != nil && ctx.Err() == nil {
+			errMu.Lock()
+			errs = append(errs, repoErr{repo: filepath.Base(target), msg: err.Error()})
+			errMu.Unlock()
+		}
 	}
 
 	if nr == 0 {
 		sem := make(chan struct{}, 1)
 		for _, target := range opts.Targets {
-			if err := ctx.Err(); err != nil {
+			if ctx.Err() != nil {
 				break
 			}
-			err := op.Run(gitops.Params{
-				RunCtx: ctx, Path: target, Ctx: opts.Contexts[target], Disp: opts.Reporter,
-				Slot: 0, Sem: sem, Force: opts.Force, Args: opts.Args,
-			})
-			if err != nil {
-				if ctx.Err() != nil {
-					break
-				}
-				name := filepath.Base(target)
-				addErr(name, err.Error())
-			}
+			runOne(0, sem, target)
 		}
 		opts.Reporter.Finish()
 	} else {
-		nrepos := len(opts.Targets)
-		rc := min(opts.RepoConcurrency, nrepos)
-		rcRemote := opts.RemoteConcurrency
-		mc := nr
-		if rcRemote > 0 {
-			mc = min(rcRemote, nr)
-		}
-
-		pool := make(chan int, rc)
-		for i := range rc {
-			pool <- i
-		}
-
-		var wg sync.WaitGroup
-		for _, target := range opts.Targets {
-			wg.Add(1)
-			go func(target string) {
-				defer wg.Done()
-				var slot int
-				select {
-				case slot = <-pool:
-				case <-ctx.Done():
-					return
-				}
-				defer func() { pool <- slot }()
-				opts.Reporter.Clear(slot)
-
-				if ctx.Err() != nil {
-					return
-				}
-				// concurrency.remote bounds remote ops per repo, so
-				// each repo gets its own semaphore
-				sem := make(chan struct{}, mc)
-				err := op.Run(gitops.Params{
-					RunCtx: ctx, Path: target, Ctx: opts.Contexts[target], Disp: opts.Reporter,
-					Slot: slot, Sem: sem, Force: opts.Force, Args: opts.Args,
-				})
-				if err != nil {
-					if ctx.Err() != nil {
-						return
-					}
-					name := filepath.Base(target)
-					addErr(name, err.Error())
-				}
-			}(target)
-		}
-		wg.Wait()
-		opts.Reporter.Finish()
+		rc := min(opts.RepoConcurrency, len(opts.Targets))
+		pooled(ctx, opts.Targets, rc, remoteSlots(opts.RemoteConcurrency, nr), opts.Reporter, runOne)
 	}
 
 	if err := ctx.Err(); err != nil {
@@ -132,7 +120,7 @@ func RunGitOp(op gitops.Op, opts RunOptions) error {
 	return nil
 }
 
-// selectRunOptions builds runOptions from config targets and a reporter
+// SelectRunOptions builds RunOptions from config targets and a reporter
 func SelectRunOptions(ctx context.Context, cfg *config.Config, targets []string, ctxs map[string]*workspace.Context, reporter gitops.Reporter, force bool, args []string) RunOptions {
 	return RunOptions{
 		Context:           ctx,
