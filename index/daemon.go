@@ -28,7 +28,7 @@ type Cfg struct {
 	Interval time.Duration
 	Bare     bool
 	Include  []string
-	Env      CmdEnv
+	Env      []string
 
 	// managed repos derived from miroir config
 	// every managed index name starts with Namespace, so a shard named
@@ -96,7 +96,7 @@ func CfgFrom(c *config.Config) (*Cfg, error) {
 		Interval:  time.Duration(c.Index.Interval) * time.Second,
 		Bare:      c.Index.Bare,
 		Include:   include,
-		Env:       CmdEnv(workspace.MergeEnv(c.General.Env)),
+		Env:       workspace.MergeEnv(c.General.Env),
 		Home:      filepath.Clean(home),
 		Namespace: indexNamespace(origin),
 		Repos:     repos,

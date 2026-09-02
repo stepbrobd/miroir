@@ -26,8 +26,6 @@ type Repo struct {
 	WebURLType string
 }
 
-type CmdEnv []string
-
 // a bare mirror keeps origin heads directly under refs/heads, so prune
 // drops what origin dropped and HEAD can point at any of them
 const bareFetchRefspec = "+refs/heads/*:refs/heads/*"
@@ -37,7 +35,7 @@ const managedKey = "miroir.managed"
 
 // Fetch clones or fetches a managed repo under the parent directory dir
 // returns the full path to the repo on disk
-func Fetch(ctx context.Context, dir string, r Repo, bare bool, env CmdEnv) (string, error) {
+func Fetch(ctx context.Context, dir string, r Repo, bare bool, env []string) (string, error) {
 	path := repoPath(dir, r.Name, bare)
 	info, err := os.Stat(path)
 	switch {
@@ -60,7 +58,7 @@ func repoPath(dir, name string, bare bool) string {
 
 // bootstrap builds the repo in a temp dir and renames it into place
 // so a crash never leaves a half made repo at path
-func bootstrap(ctx context.Context, path string, r Repo, bare bool, env CmdEnv) (err error) {
+func bootstrap(ctx context.Context, path string, r Repo, bare bool, env []string) (err error) {
 	tmp, err := tempRepoDir(path)
 	if err != nil {
 		return err
@@ -96,7 +94,7 @@ func tempRepoDir(path string) (string, error) {
 }
 
 // update refreshes an existing managed repo in place
-func update(ctx context.Context, path string, r Repo, bare bool, env CmdEnv) error {
+func update(ctx context.Context, path string, r Repo, bare bool, env []string) error {
 	if err := ensureBare(ctx, path, env, bare); err != nil {
 		return err
 	}
@@ -109,7 +107,7 @@ func update(ctx context.Context, path string, r Repo, bare bool, env CmdEnv) err
 	return fetchOrigin(ctx, path, env)
 }
 
-func ensureBare(ctx context.Context, path string, env CmdEnv, bare bool) error {
+func ensureBare(ctx context.Context, path string, env []string, bare bool) error {
 	out, err := gitOutput(ctx, path, env, "rev-parse", "--is-bare-repository")
 	if err != nil {
 		return err
@@ -121,7 +119,7 @@ func ensureBare(ctx context.Context, path string, env CmdEnv, bare bool) error {
 }
 
 // configure pins the origin url and the metadata zoekt reads from git config
-func configure(ctx context.Context, path string, r Repo, env CmdEnv) error {
+func configure(ctx context.Context, path string, r Repo, env []string) error {
 	if err := ensureRemote(ctx, path, env, "origin", r.URI); err != nil {
 		return err
 	}
@@ -135,7 +133,7 @@ func configure(ctx context.Context, path string, r Repo, env CmdEnv) error {
 }
 
 // mirror fetches origin heads into refs/heads and aims HEAD at branch
-func mirror(ctx context.Context, path, branch string, env CmdEnv) error {
+func mirror(ctx context.Context, path, branch string, env []string) error {
 	if err := setRepoConfig(ctx, path, env, "remote.origin.fetch", bareFetchRefspec); err != nil {
 		return err
 	}
@@ -150,14 +148,14 @@ func mirror(ctx context.Context, path, branch string, env CmdEnv) error {
 
 // fetchOrigin keeps auto gc in the foreground
 // a detached repack could delete a pack the indexer is still reading
-func fetchOrigin(ctx context.Context, path string, env CmdEnv, extra ...string) error {
+func fetchOrigin(ctx context.Context, path string, env []string, extra ...string) error {
 	args := append([]string{"-c", "gc.autoDetach=false", "fetch", "--prune"}, extra...)
 	return git(ctx, path, env, append(args, "origin")...)
 }
 
 // dropTrackingRefs removes the refs/remotes/origin refs an older daemon kept
 // prune never touches them since the refspec no longer maps there
-func dropTrackingRefs(ctx context.Context, path string, env CmdEnv) error {
+func dropTrackingRefs(ctx context.Context, path string, env []string) error {
 	refs, err := listRefs(ctx, path, env, "refs/remotes/origin")
 	if err != nil {
 		return err
@@ -171,7 +169,7 @@ func dropTrackingRefs(ctx context.Context, path string, env CmdEnv) error {
 }
 
 // pointHead aims HEAD at branch once fetch has populated refs/heads
-func pointHead(ctx context.Context, path, branch string, env CmdEnv) error {
+func pointHead(ctx context.Context, path, branch string, env []string) error {
 	heads, err := listRefs(ctx, path, env, "refs/heads")
 	if err != nil {
 		return err
@@ -184,7 +182,7 @@ func pointHead(ctx context.Context, path, branch string, env CmdEnv) error {
 }
 
 // listRefs returns the full names of the refs under prefix
-func listRefs(ctx context.Context, path string, env CmdEnv, prefix string) ([]string, error) {
+func listRefs(ctx context.Context, path string, env []string, prefix string) ([]string, error) {
 	out, err := gitOutput(ctx, path, env, "for-each-ref", "--format=%(refname)", prefix)
 	if err != nil {
 		return nil, err
@@ -192,7 +190,7 @@ func listRefs(ctx context.Context, path string, env CmdEnv, prefix string) ([]st
 	return strings.Fields(out), nil
 }
 
-func ensureRemote(ctx context.Context, path string, env CmdEnv, name, uri string) error {
+func ensureRemote(ctx context.Context, path string, env []string, name, uri string) error {
 	current, ok, err := repoConfig(ctx, path, env, "remote."+name+".url")
 	if err != nil {
 		return err
@@ -206,7 +204,7 @@ func ensureRemote(ctx context.Context, path string, env CmdEnv, name, uri string
 	return git(ctx, path, env, "remote", "set-url", name, uri)
 }
 
-func setWebMetadata(ctx context.Context, path string, env CmdEnv, webURL, webURLType string) error {
+func setWebMetadata(ctx context.Context, path string, env []string, webURL, webURLType string) error {
 	if webURL == "" || webURLType == "" {
 		if err := unsetRepoConfig(ctx, path, env, "zoekt.web-url"); err != nil {
 			return err
@@ -220,7 +218,7 @@ func setWebMetadata(ctx context.Context, path string, env CmdEnv, webURL, webURL
 }
 
 // setRepoConfig writes key as a single value only when the stored values differ
-func setRepoConfig(ctx context.Context, path string, env CmdEnv, key, value string) error {
+func setRepoConfig(ctx context.Context, path string, env []string, key, value string) error {
 	current, ok, err := repoConfig(ctx, path, env, key)
 	if err != nil {
 		return err
@@ -231,7 +229,7 @@ func setRepoConfig(ctx context.Context, path string, env CmdEnv, key, value stri
 	return git(ctx, path, env, "config", "--replace-all", key, value)
 }
 
-func unsetRepoConfig(ctx context.Context, path string, env CmdEnv, key string) error {
+func unsetRepoConfig(ctx context.Context, path string, env []string, key string) error {
 	_, ok, err := repoConfig(ctx, path, env, key)
 	if err != nil {
 		return err
@@ -244,7 +242,7 @@ func unsetRepoConfig(ctx context.Context, path string, env CmdEnv, key string) e
 
 // repoConfig reads every value of key joined by newlines
 // ok is false when the key is unset
-func repoConfig(ctx context.Context, path string, env CmdEnv, key string) (string, bool, error) {
+func repoConfig(ctx context.Context, path string, env []string, key string) (string, bool, error) {
 	cmd := gitCmd(ctx, path, env, "config", "--get-all", key)
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
@@ -265,7 +263,7 @@ func repoConfig(ctx context.Context, path string, env CmdEnv, key string) (strin
 }
 
 // git runs a git command in dir, logging stderr through charm log
-func git(ctx context.Context, dir string, env CmdEnv, args ...string) error {
+func git(ctx context.Context, dir string, env []string, args ...string) error {
 	cmd := gitCmd(ctx, dir, env, args...)
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
@@ -278,7 +276,7 @@ func git(ctx context.Context, dir string, env CmdEnv, args ...string) error {
 	return nil
 }
 
-func gitOutput(ctx context.Context, dir string, env CmdEnv, args ...string) (string, error) {
+func gitOutput(ctx context.Context, dir string, env []string, args ...string) (string, error) {
 	cmd := gitCmd(ctx, dir, env, args...)
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
@@ -293,7 +291,7 @@ func gitOutput(ctx context.Context, dir string, env CmdEnv, args ...string) (str
 	return stdout.String(), nil
 }
 
-func gitCmd(ctx context.Context, dir string, env CmdEnv, args ...string) *exec.Cmd {
+func gitCmd(ctx context.Context, dir string, env []string, args ...string) *exec.Cmd {
 	cmd := exec.CommandContext(ctx, "git", args...)
 	cmd.Dir = dir
 	if len(env) > 0 {

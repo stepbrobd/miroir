@@ -137,7 +137,7 @@ func shardRepoByName(t *testing.T, dir, name string) *zoekt.Repository {
 
 func bareHeadRef(t *testing.T, dir string, env []string) string {
 	t.Helper()
-	out, err := gitOutput(t.Context(), dir, CmdEnv(env), "symbolic-ref", "HEAD")
+	out, err := gitOutput(t.Context(), dir, env, "symbolic-ref", "HEAD")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -146,7 +146,7 @@ func bareHeadRef(t *testing.T, dir string, env []string) string {
 
 func refNames(t *testing.T, dir string, env []string, prefix string) []string {
 	t.Helper()
-	refs, err := listRefs(t.Context(), dir, CmdEnv(env), prefix)
+	refs, err := listRefs(t.Context(), dir, env, prefix)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -261,7 +261,7 @@ func TestCycleContextCanceledDuringFetchStopsLaterRepos(t *testing.T) {
 		Interval: time.Hour,
 		Bare:     true,
 		Home:     home,
-		Env:      CmdEnv(gitEnv()),
+		Env:      gitEnv(),
 		Repos: []Repo{
 			{Name: "first", IndexName: "first", URI: first, Branch: "main"},
 			{Name: "second", IndexName: "second", URI: second, Branch: "main"},
@@ -398,7 +398,7 @@ func TestRunReturnsServerErrorWithoutWaitingForFullCycle(t *testing.T) {
 		Interval: time.Hour,
 		Bare:     true,
 		Home:     home,
-		Env:      CmdEnv(gitEnv()),
+		Env:      gitEnv(),
 		Repos:    []Repo{{Name: "seed", IndexName: "seed", URI: src, Branch: "main"}},
 	}
 
@@ -1106,10 +1106,10 @@ func TestCfgFromBasic(t *testing.T) {
 	if got.Repos[0].WebURLType != "github" {
 		t.Errorf("repo web url type: got %q", got.Repos[0].WebURLType)
 	}
-	if !slices.Contains([]string(got.Env), "FROM_SHELL=shell") {
+	if !slices.Contains(got.Env, "FROM_SHELL=shell") {
 		t.Errorf("expected shell env precedence, got %v", got.Env)
 	}
-	if !slices.Contains([]string(got.Env), "ONLY_CONFIG=yes") {
+	if !slices.Contains(got.Env, "ONLY_CONFIG=yes") {
 		t.Errorf("expected config env to be merged, got %v", got.Env)
 	}
 }
