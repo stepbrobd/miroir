@@ -177,12 +177,12 @@ unset in the environment.
 
 ### Repo
 
-| Field         | Default   | Description                                            |
-| ------------- | --------- | ------------------------------------------------------ |
-| `description` |           | Repo description synced to forges                      |
-| `visibility`  | `private` | `public` or `private`                                  |
-| `archived`    | `false`   | Skip in git ops; archive on supporting forges via sync |
-| `branch`      |           | Per-repo branch override                               |
+| Field         | Default   | Description                                               |
+| ------------- | --------- | --------------------------------------------------------- |
+| `description` |           | Repo description synced to forges                         |
+| `visibility`  | `private` | `public` or `private`                                     |
+| `archived`    | `false`   | Skip in git ops and archive on supporting forges via sync |
+| `branch`      |           | Per-repo branch override                                  |
 
 ### Index
 
