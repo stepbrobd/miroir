@@ -2,6 +2,8 @@ package config
 
 import (
 	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -126,7 +128,6 @@ FOO = "bar"
 origin = true
 domain = "github.com"
 user = "alice"
-token = "tok123"
 
 [repo.myrepo]
 description = "my repo"
@@ -167,9 +168,6 @@ visibility = "public"
 	}
 	if p.Access != SSH {
 		t.Errorf("access: got %v, want SSH", p.Access)
-	}
-	if p.Token == nil || *p.Token != "tok123" {
-		t.Errorf("token: got %v", p.Token)
 	}
 	if p.Forge != nil {
 		t.Errorf("forge: got %v, want nil", p.Forge)
@@ -295,16 +293,16 @@ func TestResolveToken(t *testing.T) {
 	t.Setenv("MIROIR_GITHUB_TOKEN", "")
 	os.Unsetenv("MIROIR_GITHUB_TOKEN")
 
-	tok := "config-token"
-	p := Platform{Token: &tok}
+	tok := "auth-token"
+	auth := &Auth{Platform: map[string]Credential{"github": {Token: &tok}}}
 
-	got := ResolveToken("github", p)
-	if got == nil || *got != "config-token" {
-		t.Errorf("config token: got %v", got)
+	got := ResolveToken("github", auth)
+	if got == nil || *got != "auth-token" {
+		t.Errorf("auth token: got %v", got)
 	}
 
 	t.Setenv("MIROIR_GITHUB_TOKEN", "env-token")
-	got = ResolveToken("github", p)
+	got = ResolveToken("github", auth)
 	if got == nil || *got != "env-token" {
 		t.Errorf("env token: got %v", got)
 	}
@@ -313,11 +311,175 @@ func TestResolveToken(t *testing.T) {
 func TestResolveTokenNormalizesPlatformName(t *testing.T) {
 	t.Setenv("MIROIR_GITLAB_MAIN_TOKEN", "env-token")
 
-	tok := "config-token"
-	p := Platform{Token: &tok}
-	got := ResolveToken("gitlab-main", p)
+	tok := "auth-token"
+	auth := &Auth{Platform: map[string]Credential{"gitlab-main": {Token: &tok}}}
+	got := ResolveToken("gitlab-main", auth)
 	if got == nil || *got != "env-token" {
 		t.Errorf("normalized env token: got %v", got)
+	}
+}
+
+// the auth file is optional, and so is every entry in it
+func TestResolveTokenWithoutCredential(t *testing.T) {
+	t.Setenv("MIROIR_GITHUB_TOKEN", "")
+	os.Unsetenv("MIROIR_GITHUB_TOKEN")
+
+	if got := ResolveToken("github", nil); got != nil {
+		t.Errorf("nil auth: got %v, want nil", got)
+	}
+	if got := ResolveToken("github", &Auth{}); got != nil {
+		t.Errorf("empty auth: got %v, want nil", got)
+	}
+	auth := &Auth{Platform: map[string]Credential{"github": {}, "gitlab": {}}}
+	if got := ResolveToken("github", auth); got != nil {
+		t.Errorf("entry without a token: got %v, want nil", got)
+	}
+}
+
+func TestResolveTokenIgnoresBlankEnvVar(t *testing.T) {
+	t.Setenv("MIROIR_GITHUB_TOKEN", "")
+
+	tok := "auth-token"
+	auth := &Auth{Platform: map[string]Credential{"github": {Token: &tok}}}
+	got := ResolveToken("github", auth)
+	if got == nil || *got != "auth-token" {
+		t.Errorf("a blank env var must not mask the auth file: got %v", got)
+	}
+}
+
+func TestResolveTokenTrimsWhitespace(t *testing.T) {
+	t.Setenv("MIROIR_GITHUB_TOKEN", "")
+	os.Unsetenv("MIROIR_GITHUB_TOKEN")
+
+	padded := "  ghp_xxx\n"
+	auth := &Auth{Platform: map[string]Credential{"github": {Token: &padded}}}
+	if got := ResolveToken("github", auth); got == nil || *got != "ghp_xxx" {
+		t.Errorf("auth file: got %v", got)
+	}
+
+	t.Setenv("MIROIR_GITHUB_TOKEN", "  ghp_env\t")
+	if got := ResolveToken("github", auth); got == nil || *got != "ghp_env" {
+		t.Errorf("env var: got %v", got)
+	}
+}
+
+func TestParseRejectsTokenInConfig(t *testing.T) {
+	// the decoder matches field names case insensitively, so every casing
+	// has to reach the same hint
+	for _, key := range []string{"token", "Token", "TOKEN"} {
+		_, err := Parse("[platform.github]\norigin = true\ndomain = \"github.com\"\n" + key + " = \"tok123\"\n")
+		if err == nil {
+			t.Fatalf("%s: expected a token in the config to be rejected", key)
+		}
+		if !strings.Contains(err.Error(), "auth file") {
+			t.Errorf("%s: error should name the auth file: %v", key, err)
+		}
+		if strings.Contains(err.Error(), "tok123") {
+			t.Errorf("%s: error must not echo the token: %v", key, err)
+		}
+	}
+}
+
+// the parser quotes the offending value back, and in this file that is a secret
+func TestParseAuthErrorOmitsTokenValue(t *testing.T) {
+	_, err := ParseAuth("[platform.github]\ntoken = ghpSECRETVALUE\n")
+	if err == nil {
+		t.Fatal("expected a parse error")
+	}
+	if strings.Contains(err.Error(), "ghpSECRETVALUE") {
+		t.Errorf("error must not echo the token: %v", err)
+	}
+	if !strings.Contains(err.Error(), "platform.github.token") {
+		t.Errorf("error should name the key: %v", err)
+	}
+}
+
+func TestParseAuth(t *testing.T) {
+	auth, err := ParseAuth(`
+[platform.github]
+token = "ghp_xxx"
+
+[platform.gitlab]
+`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := ResolveToken("github", auth); got == nil || *got != "ghp_xxx" {
+		t.Errorf("github token: got %v", got)
+	}
+	gl, ok := auth.Platform["gitlab"]
+	if !ok || gl.Token != nil {
+		t.Errorf("an entry may carry no token: got %v", gl.Token)
+	}
+}
+
+func TestParseAuthEmpty(t *testing.T) {
+	auth, err := ParseAuth("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := ResolveToken("github", auth); got != nil {
+		t.Errorf("got %v, want nil", got)
+	}
+}
+
+func TestParseAuthRejectsUnknownKeys(t *testing.T) {
+	// only auth material belongs here, a platform field is a mistake
+	if _, err := ParseAuth("[platform.github]\ndomain = \"github.com\"\n"); err == nil {
+		t.Fatal("expected a platform field to be rejected")
+	}
+	if _, err := ParseAuth("[platform.github]\ntokne = \"x\"\n"); err == nil {
+		t.Fatal("expected a misspelled key to be rejected")
+	}
+	if _, err := ParseAuth("[general]\nhome = \"~/\"\n"); err == nil {
+		t.Fatal("expected a config table to be rejected")
+	}
+}
+
+func TestParseAuthRejectsBlankToken(t *testing.T) {
+	if _, err := ParseAuth("[platform.github]\ntoken = \"  \"\n"); err == nil {
+		t.Fatal("expected a blank token to be rejected")
+	}
+}
+
+func TestCheckAuth(t *testing.T) {
+	cfg, err := Parse("[platform.github]\norigin = true\ndomain = \"github.com\"\n")
+	if err != nil {
+		t.Fatal(err)
+	}
+	tok := "t"
+	if err := CheckAuth(cfg, nil); err != nil {
+		t.Errorf("nil auth: %v", err)
+	}
+	if err := CheckAuth(cfg, &Auth{}); err != nil {
+		t.Errorf("empty auth: %v", err)
+	}
+	ok := &Auth{Platform: map[string]Credential{"github": {Token: &tok}}}
+	if err := CheckAuth(cfg, ok); err != nil {
+		t.Errorf("configured platform: %v", err)
+	}
+	// a renamed or misspelled platform would otherwise sync unauthenticated
+	bad := &Auth{Platform: map[string]Credential{"githbu": {Token: &tok}}}
+	if err := CheckAuth(cfg, bad); err == nil {
+		t.Fatal("expected an unknown platform to be rejected")
+	}
+}
+
+func TestLoadAuth(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "auth.toml")
+	if err := os.WriteFile(path, []byte("[platform.github]\ntoken = \"ghp_xxx\"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	auth, err := LoadAuth(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := ResolveToken("github", auth); got == nil || *got != "ghp_xxx" {
+		t.Errorf("token: got %v", got)
+	}
+
+	if _, err := LoadAuth(filepath.Join(t.TempDir(), "missing.toml")); err == nil {
+		t.Fatal("expected an error for a named file that does not exist")
 	}
 }
 

@@ -17,9 +17,9 @@ GitHub (or any other forge):
 
 1. Enumerate source repos via `gh repo list` (or each forge's API, or by hand)
    and write a `[repo.*]` entry per repo into your config
-2. Add an SSH key and generate an API token for the source and each destination
-   forge, then add them as `[platform.*]` entries. Mark the migration source as
-   `origin = true`
+2. Add an SSH key and add each forge as a `[platform.*]` entry, marking the
+   migration source as `origin = true`. Generate an API token for the source and
+   each destination forge and put them in the [auth file](#auth)
 3. `miroir init -a` clones from the current origin, `miroir sync -a` creates the
    destination repos with the configured description/visibility, and
    `miroir push -a` populates them across every platform remote
@@ -78,7 +78,6 @@ domain = "gitlab.com"
 user = "alice"
 access = "https"
 forge = "gitlab"              # Auto-detected from domain if omitted
-token = "glpat-xxxxx"         # Or set MIROIR_GITLAB_TOKEN env
 
 [platform.codeberg]
 domain = "codeberg.org"
@@ -128,12 +127,53 @@ repo names such as `group/repo` are not supported.
 | `user`   |         | Username on forge                                                          |
 | `access` | `ssh`   | `ssh` or `https`                                                           |
 | `forge`  |         | `github`, `gitlab`, `codeberg`, or `sourcehut` (auto-detected from domain) |
-| `token`  |         | API token for forge operations                                             |
 
-Tokens can also be set via environment: `MIROIR_<PLATFORM_NAME>_TOKEN` (e.g.
-`MIROIR_GITHUB_TOKEN`). Platform names are uppercased and non-alphanumeric
-characters are replaced with `_`, so `gitlab-main` maps to
-`MIROIR_GITLAB_MAIN_TOKEN`. Platform names must normalize uniquely.
+### Auth
+
+API tokens do not belong in the config file. The config schema has no `token`
+field and leaving one there fails the load, so the config can stay in version
+control. Credentials live in a separate file, looked up in this order:
+
+1. `--auth` flag on `miroir sync`
+2. `MIROIR_AUTH` environment variable
+3. `$XDG_CONFIG_HOME/miroir/auth.toml` (typically `~/.config/miroir/auth.toml`)
+
+```toml
+[platform.github]
+token = "ghp_xxxxx"
+
+[platform.gitlab]
+token = "glpat-xxxxx"
+```
+
+| Field   | Default | Description                    |
+| ------- | ------- | ------------------------------ |
+| `token` |         | API token for forge operations |
+
+A file named by the flag or the environment variable must exist. A discovered
+one is optional, as is every entry in it, and a platform with no credential is
+skipped by `sync`. Only `sync` reads this file, so a malformed one cannot stop
+the index daemon.
+
+Section names must match a `[platform.*]` in the config. An unknown name is
+rejected rather than left to sync unauthenticated, which catches a renamed or
+misspelled platform.
+
+Step 3 is an XDG search, so it falls through to `XDG_CONFIG_DIRS` (`/etc/xdg` on
+Linux) once `XDG_CONFIG_HOME` comes up empty, and a system-wide `auth.toml` is
+used when no user one exists. Name the file explicitly when that matters.
+
+Lookup ignores the config file's own directory on purpose. Resolving the symlink
+of an XDG config kept in version control would search for credentials inside
+that repository.
+
+A token can also come from the environment as `MIROIR_<PLATFORM_NAME>_TOKEN`
+(e.g. `MIROIR_GITHUB_TOKEN`), which beats the auth file. Platform names are
+uppercased and non-alphanumeric characters are replaced with `_`, so
+`gitlab-main` maps to `MIROIR_GITLAB_MAIN_TOKEN`. Platform names must normalize
+uniquely. Surrounding whitespace is stripped from either source. A token that is
+blank after the strip is rejected at load time in the auth file, and treated as
+unset in the environment.
 
 ### Repo
 
@@ -175,9 +215,10 @@ By default, miroir targets the repo matching your current directory.
 
 Flags are scoped per command: `-n`/`-a` apply to `init`, `fetch`, `pull`,
 `push`, `exec`, and `sync`. `-f` applies to `init`, `fetch`, `pull`, `push`, and
-`sweep`. `-t` applies to `push`. `--tty`/`--no-tty` apply to the commands that
-render progress output (`init`, `fetch`, `pull`, `push`, `exec`, `sync`). A flag
-a command does not take is rejected with an error rather than silently ignored.
+`sweep`. `-t` applies to `push`. `--auth` applies to `sync`. `--tty`/`--no-tty`
+apply to the commands that render progress output (`init`, `fetch`, `pull`,
+`push`, `exec`, `sync`). A flag a command does not take is rejected with an
+error rather than silently ignored.
 
 ### Commands
 
@@ -233,12 +274,14 @@ Runs sequentially with direct stdout/stderr passthrough.
 
 ```sh
 miroir sync -a
+miroir sync -a --auth /run/secrets/miroir-auth
 ```
 
 Creates repos that don't exist, updates description/visibility on existing ones,
 and archives repos marked `archived = true` on forges that support archiving.
-Each repo's sync against one forge, its read, its write, and one retry when the
-repo appeared in between, has a 30-second timeout.
+Forge tokens come from the [auth file](#auth), and `--auth` points at a
+different one. Each repo's sync against one forge, its read, its write, and one
+retry when the repo appeared in between, has a 30-second timeout.
 
 **sweep** removes archived and untracked repos from the workspace
 

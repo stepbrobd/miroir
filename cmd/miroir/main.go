@@ -22,15 +22,17 @@ var version = "dev"
 
 // app holds the flag values and what the pre-run hooks resolve from them
 type app struct {
-	config string
-	name   string
-	all    bool
-	force  bool
-	tags   bool
-	tty    bool
-	noTTY  bool
+	config   string
+	authFile string
+	name     string
+	all      bool
+	force    bool
+	tags     bool
+	tty      bool
+	noTTY    bool
 
 	cfg     *config.Config
+	auth    *config.Auth
 	targets []*workspace.Context
 }
 
@@ -93,6 +95,48 @@ func (a *app) loadConfig(*cobra.Command, []string) error {
 	}
 	a.cfg, err = config.Load(path)
 	return err
+}
+
+// --auth beats MIROIR_AUTH which beats XDG config dirs, an empty return means
+// no credential file was found, which leaves every platform to the
+// MIROIR_<NAME>_TOKEN env vars alone
+//
+// discovery deliberately ignores the config file's own directory, resolving
+// the symlink of an XDG config kept in version control would look for
+// credentials inside that repository
+func (a *app) authPath() string {
+	if a.authFile != "" {
+		return a.authFile
+	}
+	if p := os.Getenv("MIROIR_AUTH"); p != "" {
+		return p
+	}
+	p, err := xdg.SearchConfigFile(filepath.Join("miroir", "auth.toml"))
+	if err != nil {
+		return ""
+	}
+	return p
+}
+
+// loadAuth is only wired into sync, a malformed credential file must not stop
+// the index daemon, which never reads a token
+func (a *app) loadAuth(cmd *cobra.Command, args []string) error {
+	if err := a.loadConfig(cmd, args); err != nil {
+		return err
+	}
+	path := a.authPath()
+	if path == "" {
+		return nil
+	}
+	auth, err := config.LoadAuth(path)
+	if err != nil {
+		return err
+	}
+	if err := config.CheckAuth(a.cfg, auth); err != nil {
+		return err
+	}
+	a.auth = auth
+	return nil
 }
 
 func (a *app) resolveTargets(cmd *cobra.Command, args []string) error {

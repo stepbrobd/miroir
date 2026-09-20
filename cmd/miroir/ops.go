@@ -65,13 +65,14 @@ func (a *app) syncCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:               "sync",
 		Short:             "Sync metadata to all forges",
-		PersistentPreRunE: a.loadConfig,
+		PersistentPreRunE: a.loadAuth,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return a.runSync(cmd.Context())
 		},
 	}
 	a.targetFlags(cmd)
 	a.ttyFlags(cmd)
+	cmd.Flags().StringVar(&a.authFile, "auth", "", "Auth file path")
 	return cmd
 }
 
@@ -110,7 +111,7 @@ func (a *app) runSync(ctx context.Context) error {
 		return err
 	}
 	disp := display.New(min(a.cfg.General.Concurrency.Repo, max(1, len(names))), len(a.cfg.Platform), display.DefaultTheme, a.ttyOverride())
-	return miroir.RunSync(ctx, a.cfg, names, disp)
+	return miroir.RunSync(ctx, a.cfg, a.auth, names, disp)
 }
 
 func (a *app) runSweep() error {

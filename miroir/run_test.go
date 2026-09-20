@@ -254,7 +254,7 @@ func TestRunSyncSkipsUnknownForgeAndMissingToken(t *testing.T) {
 		},
 	}
 
-	if err := RunSync(t.Context(), cfg, []string{"seed"}, reporter); err != nil {
+	if err := RunSync(t.Context(), cfg, nil, []string{"seed"}, reporter); err != nil {
 		t.Fatal(err)
 	}
 	skips := 0
@@ -293,7 +293,6 @@ func TestRunSyncCancelStopsBeforeRepoWork(t *testing.T) {
 			"github": {
 				Domain: "github.com",
 				User:   "alice",
-				Token:  &token,
 				Forge:  &forge,
 			},
 		},
@@ -301,8 +300,11 @@ func TestRunSyncCancelStopsBeforeRepoWork(t *testing.T) {
 			"seed": {Visibility: config.Private},
 		},
 	}
+	auth := &config.Auth{Platform: map[string]config.Credential{
+		"github": {Token: &token},
+	}}
 
-	err := RunSync(ctx, cfg, []string{"seed"}, reporter)
+	err := RunSync(ctx, cfg, auth, []string{"seed"}, reporter)
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("got %v want context canceled", err)
 	}

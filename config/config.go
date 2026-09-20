@@ -2,9 +2,12 @@
 package config
 
 import (
+	"errors"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/BurntSushi/toml"
@@ -124,12 +127,11 @@ type General struct {
 }
 
 type Platform struct {
-	Origin bool    `toml:"origin"`
-	Domain string  `toml:"domain"`
-	User   string  `toml:"user"`
-	Access Access  `toml:"access"`
-	Token  *string `toml:"token"`
-	Forge  *Forge  `toml:"forge"`
+	Origin bool   `toml:"origin"`
+	Domain string `toml:"domain"`
+	User   string `toml:"user"`
+	Access Access `toml:"access"`
+	Forge  *Forge `toml:"forge"`
 }
 
 type Repo struct {
@@ -152,6 +154,19 @@ type Config struct {
 	Platform map[string]Platform `toml:"platform"`
 	Repo     map[string]Repo     `toml:"repo"`
 	Index    Index               `toml:"index"`
+}
+
+// Credential carries the auth material for one platform, every field is
+// optional and a platform with none is skipped by sync
+type Credential struct {
+	Token *string `toml:"token"`
+}
+
+// Auth is the credential file, kept out of Config so the main config file
+// cannot hold a secret and can stay in version control
+// a nil *Auth carries no credentials, which is what a missing file means
+type Auth struct {
+	Platform map[string]Credential `toml:"platform"`
 }
 
 func validate(cfg *Config) error {
@@ -213,6 +228,30 @@ func validate(cfg *Config) error {
 	return nil
 }
 
+func validateAuth(a *Auth) error {
+	for _, name := range slices.Sorted(maps.Keys(a.Platform)) {
+		if t := a.Platform[name].Token; t != nil && strings.TrimSpace(*t) == "" {
+			return fmt.Errorf("auth: platform %q: token must not be empty", name)
+		}
+	}
+	return nil
+}
+
+// CheckAuth rejects credentials naming a platform the config does not define,
+// a renamed or misspelled platform would otherwise sync unauthenticated
+// cfg is required, a is not
+func CheckAuth(cfg *Config, a *Auth) error {
+	if a == nil {
+		return nil
+	}
+	for _, name := range slices.Sorted(maps.Keys(a.Platform)) {
+		if _, ok := cfg.Platform[name]; !ok {
+			return fmt.Errorf("auth: unknown platform %q", name)
+		}
+	}
+	return nil
+}
+
 // ForgeOfDomain returns nil if the domain is not a known forge
 func ForgeOfDomain(domain string) *Forge {
 	d := strings.ToLower(domain)
@@ -240,13 +279,23 @@ func ResolveForge(p Platform) *Forge {
 	return ForgeOfDomain(p.Domain)
 }
 
-// ResolveToken lets env var MIROIR_<NORMALIZED_NAME>_TOKEN beat the config field
-func ResolveToken(name string, p Platform) *string {
-	v := tokenEnvVar(name)
-	if t, ok := os.LookupEnv(v); ok {
+// ResolveToken lets env var MIROIR_<NORMALIZED_NAME>_TOKEN beat the auth file
+// surrounding whitespace is stripped, and a token blank after the strip is no
+// credential at all
+func ResolveToken(name string, a *Auth) *string {
+	if v, ok := os.LookupEnv(tokenEnvVar(name)); ok {
+		if t := strings.TrimSpace(v); t != "" {
+			return &t
+		}
+	}
+	if a == nil {
+		return nil
+	}
+	if v := a.Platform[name].Token; v != nil {
+		t := strings.TrimSpace(*v)
 		return &t
 	}
-	return p.Token
+	return nil
 }
 
 func tokenEnvVar(name string) string {
@@ -300,10 +349,42 @@ func Parse(s string) (*Config, error) {
 	// a misspelled key silently falling back to a zero value could make
 	// sync flip live repos private, so unknown keys are fatal
 	if undecoded := md.Undecoded(); len(undecoded) > 0 {
+		for _, key := range undecoded {
+			if len(key) == 3 && strings.EqualFold(key[0], "platform") && strings.EqualFold(key[2], "token") {
+				return nil, fmt.Errorf("config parse: platform %q: token belongs in the auth file, not the config", key[1])
+			}
+		}
 		return nil, fmt.Errorf("config parse: unknown keys %v", undecoded)
 	}
 	if err := validate(cfg); err != nil {
 		return nil, err
 	}
 	return cfg, nil
+}
+
+func LoadAuth(path string) (*Auth, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	return ParseAuth(string(data))
+}
+
+func ParseAuth(s string) (*Auth, error) {
+	auth := &Auth{}
+	md, err := toml.Decode(s, auth)
+	if err != nil {
+		var pe toml.ParseError
+		if errors.As(err, &pe) {
+			return nil, fmt.Errorf("auth parse: line %d: invalid TOML under key %q", pe.Position.Line, pe.LastKey)
+		}
+		return nil, fmt.Errorf("auth parse: %w", err)
+	}
+	if undecoded := md.Undecoded(); len(undecoded) > 0 {
+		return nil, fmt.Errorf("auth parse: unknown keys %v", undecoded)
+	}
+	if err := validateAuth(auth); err != nil {
+		return nil, err
+	}
+	return auth, nil
 }

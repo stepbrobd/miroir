@@ -70,7 +70,6 @@ func byName(ctxs []*Context, name string) *Context {
 func TestMakeAll(t *testing.T) {
 	t.Setenv("HOME", "/home/test")
 	gh := config.Github
-	tok := "tok"
 	branch := "develop"
 	cfg := &config.Config{
 		General: config.General{
@@ -84,7 +83,6 @@ func TestMakeAll(t *testing.T) {
 				User:   "alice",
 				Access: config.SSH,
 				Forge:  &gh,
-				Token:  &tok,
 			},
 		},
 		Repo: map[string]config.Repo{

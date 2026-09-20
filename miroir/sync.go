@@ -47,14 +47,14 @@ type platform struct {
 }
 
 // resolvePlatforms builds one forge client per platform in name order
-func resolvePlatforms(cfg *config.Config) ([]platform, error) {
+func resolvePlatforms(cfg *config.Config, auth *config.Auth) ([]platform, error) {
 	names := slices.Sorted(maps.Keys(cfg.Platform))
 	platforms := make([]platform, 0, len(names))
 	for _, name := range names {
 		p := cfg.Platform[name]
 		entry := platform{name: name, user: p.User}
 		kind := config.ResolveForge(p)
-		token := config.ResolveToken(name, p)
+		token := config.ResolveToken(name, auth)
 		switch {
 		case kind == nil:
 			entry.skip = "unknown forge"
@@ -136,9 +136,10 @@ func syncRepo(ctx context.Context, cfg *config.Config, platforms []platform, dis
 }
 
 // RunSync syncs repo metadata to all configured forges for the given names
-// ctx must be non-nil
-func RunSync(ctx context.Context, cfg *config.Config, names []string, disp gitops.Reporter) error {
-	platforms, err := resolvePlatforms(cfg)
+// ctx must be non-nil, auth is nil when no credential file was found, which
+// leaves the token env vars as the only source
+func RunSync(ctx context.Context, cfg *config.Config, auth *config.Auth, names []string, disp gitops.Reporter) error {
+	platforms, err := resolvePlatforms(cfg, auth)
 	if err != nil {
 		return err
 	}
